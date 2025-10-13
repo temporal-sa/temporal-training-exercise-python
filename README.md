@@ -43,6 +43,13 @@ A series of hands-on exercises to learn Temporal workflow development using Pyth
 - Track workflow progress in real-time
 - Monitor workflow execution from external clients
 
+### Exercise 4: Money Transfer with Search Attributes
+**Duration:** 15 minutes  
+**Focus:** Workflow discoverability and filtering
+- Implement search attributes for workflow metadata
+- Enable workflow filtering in Temporal Web UI
+- Make workflows discoverable by business criteria
+
 ## Running Exercises
 
 Each exercise follows the same pattern:
@@ -68,4 +75,5 @@ Complete solutions are available in the `solution{N}/` directories for reference
 - **Workers:** Task execution and polling
 - **Signals:** External events and workflow modification
 - **Queries:** Real-time workflow state inspection
+- **Search Attributes:** Workflow metadata and discoverability
 - **Error Handling:** Retries and failure management

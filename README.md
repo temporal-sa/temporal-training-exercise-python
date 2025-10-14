@@ -50,6 +50,22 @@ A series of hands-on exercises to learn Temporal workflow development using Pyth
 - Enable workflow filtering in Temporal Web UI
 - Make workflows discoverable by business criteria
 
+### Exercise 5: User Metadata & Activity Summaries
+**Duration:** 30 minutes  
+**Focus:** Workflow observability and metadata
+- Add activity summaries for runtime context
+- Improve workflow observability in Temporal Web UI
+- Understand metadata best practices
+- Enhance debugging capabilities
+
+### Exercise 6: Unit Testing
+**Duration:** 45 minutes  
+**Focus:** Testing workflows, activities, signals, and queries
+- Write comprehensive unit tests for Temporal workflows
+- Test activity success and failure scenarios
+- Verify signal handling and query responses
+- Mock external dependencies for predictable tests
+
 ## Running Exercises
 
 Each exercise follows the same pattern:
@@ -64,9 +80,27 @@ Each exercise follows the same pattern:
    uv run exercise{N}/start_workflow.py
    ```
 
+**For Exercise 6 (Unit Testing):**
+```bash
+uv run exercise6/run_tests.py
+```
+
 ## Solutions
 
 Complete solutions are available in the `solution{N}/` directories for reference.
+
+### Solution 6: Unit Testing
+Comprehensive unit tests for Temporal workflows and activities:
+- Activity testing with mocked failures
+- Workflow testing with different scenarios
+- Query and signal testing
+- State transition validation
+
+**Running Tests:**
+```bash
+cd solution6
+uv run python run_tests.py
+```
 
 ## Key Concepts Covered
 
@@ -77,3 +111,4 @@ Complete solutions are available in the `solution{N}/` directories for reference
 - **Queries:** Real-time workflow state inspection
 - **Search Attributes:** Workflow metadata and discoverability
 - **Error Handling:** Retries and failure management
+- **Unit Testing:** Testing workflows and activities with mocked dependencies

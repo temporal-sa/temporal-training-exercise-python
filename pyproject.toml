@@ -1,9 +1,11 @@
 [project]
-name = "solution1"
+name = "temporal-training-exercises"
 version = "0.1.0"
-description = "Add your description here"
+description = "Temporal training exercises with Python"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "temporalio>=1.18.1",
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
 ]

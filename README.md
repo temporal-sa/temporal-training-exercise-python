@@ -66,6 +66,14 @@ A series of hands-on exercises to learn Temporal workflow development using Pyth
 - Verify signal handling and query responses
 - Mock external dependencies for predictable tests
 
+### Exercise 7: Manual Activity Retry
+**Duration:** 45 minutes  
+**Focus:** Manual retry patterns and signal-based error correction
+- Implement manual retry patterns using signals
+- Handle non-retryable activity failures
+- Interactive error correction workflows
+- Dynamic request updates during execution
+
 ## Running Exercises
 
 Each exercise follows the same pattern:
@@ -102,6 +110,13 @@ cd solution6
 uv run python run_tests.py
 ```
 
+### Solution 7: Manual Activity Retry
+Manual retry patterns for handling invalid data scenarios:
+- Non-retryable activity failures with `ApplicationError`
+- Signal-based retry mechanisms
+- Interactive error correction workflows
+- Dynamic request updates during execution
+
 ## Key Concepts Covered
 
 - **Workflows:** Orchestration logic and state management
@@ -112,3 +127,4 @@ uv run python run_tests.py
 - **Search Attributes:** Workflow metadata and discoverability
 - **Error Handling:** Retries and failure management
 - **Unit Testing:** Testing workflows and activities with mocked dependencies
+- **Manual Activity Retry:** Signal-based retry patterns and error correction

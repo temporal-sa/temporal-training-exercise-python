@@ -22,35 +22,35 @@ A series of hands-on exercises to learn Temporal workflow development using Pyth
 
 ## Exercises
 
-### Exercise 1: Hello Temporal
+### [Exercise 1: Hello Temporal](exercise1/)
 **Duration:** 30 minutes  
 **Focus:** Basic workflow and activity concepts
 - Implement your first Temporal workflow
 - Create activities for external operations
 - Set up workers and execute workflows
 
-### Exercise 2: Money Transfer with Signals
+### [Exercise 2: Money Transfer with Signals](exercise2/)
 **Duration:** 45 minutes  
 **Focus:** Signals and human-in-the-loop processes
 - Handle external signals in workflows
 - Implement conditional logic based on signals
 - Build approval-based business processes
 
-### Exercise 3: Money Transfer with Queries
+### [Exercise 3: Money Transfer with Queries](exercise3/)
 **Duration:** 30 minutes  
 **Focus:** Workflow observability and state monitoring
 - Add query methods to expose workflow state
 - Track workflow progress in real-time
 - Monitor workflow execution from external clients
 
-### Exercise 4: Money Transfer with Search Attributes
+### [Exercise 4: Money Transfer with Search Attributes](exercise4/)
 **Duration:** 15 minutes  
 **Focus:** Workflow discoverability and filtering
 - Implement search attributes for workflow metadata
 - Enable workflow filtering in Temporal Web UI
 - Make workflows discoverable by business criteria
 
-### Exercise 5: User Metadata & Activity Summaries
+### [Exercise 5: User Metadata & Activity Summaries](exercise5/)
 **Duration:** 30 minutes  
 **Focus:** Workflow observability and metadata
 - Add activity summaries for runtime context
@@ -58,7 +58,7 @@ A series of hands-on exercises to learn Temporal workflow development using Pyth
 - Understand metadata best practices
 - Enhance debugging capabilities
 
-### Exercise 6: Unit Testing
+### [Exercise 6: Unit Testing](exercise6/)
 **Duration:** 45 minutes  
 **Focus:** Testing workflows, activities, signals, and queries
 - Write comprehensive unit tests for Temporal workflows
@@ -66,7 +66,7 @@ A series of hands-on exercises to learn Temporal workflow development using Pyth
 - Verify signal handling and query responses
 - Mock external dependencies for predictable tests
 
-### Exercise 7: Manual Activity Retry
+### [Exercise 7: Manual Activity Retry](exercise7/)
 **Duration:** 45 minutes  
 **Focus:** Manual retry patterns and signal-based error correction
 - Implement manual retry patterns using signals

@@ -74,6 +74,14 @@ A series of hands-on exercises to learn Temporal workflow development using Pyth
 - Interactive error correction workflows
 - Dynamic request updates during execution
 
+### [Exercise 8: Workflow Versioning with Patched API](exercise8/)
+**Duration:** 45 minutes  
+**Focus:** Workflow versioning and backward compatibility
+- Use `workflow.patched()` to safely evolve workflows
+- Write replay tests to verify version compatibility
+- Handle multiple workflow versions in production
+- Generate and use workflow history for testing
+
 ## Running Exercises
 
 Each exercise follows the same pattern:
@@ -117,6 +125,18 @@ Manual retry patterns for handling invalid data scenarios:
 - Interactive error correction workflows
 - Dynamic request updates during execution
 
+### Solution 8: Workflow Versioning
+Safe workflow evolution using the Patched API:
+- `workflow.patched()` for conditional code branching
+- Replay testing with `Replayer` and `WorkflowHistory`
+- Pre-generated workflow history for backward compatibility testing
+- Notification activity added via versioning
+
+**Running Tests:**
+```bash
+uv run pytest solution8/test_money_transfer_workflow.py -v
+```
+
 ## Key Concepts Covered
 
 - **Workflows:** Orchestration logic and state management
@@ -128,3 +148,4 @@ Manual retry patterns for handling invalid data scenarios:
 - **Error Handling:** Retries and failure management
 - **Unit Testing:** Testing workflows and activities with mocked dependencies
 - **Manual Activity Retry:** Signal-based retry patterns and error correction
+- **Workflow Versioning:** Safe evolution with `workflow.patched()` and replay testing

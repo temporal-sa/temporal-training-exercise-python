@@ -15,6 +15,13 @@ Implement search attribute functionality in the money transfer workflow:
 1. **Add Search Attribute**: Set the `AccountId` search attribute to the source account ID when the workflow starts
 2. **Test Filtering**: Verify that workflows can be filtered by account ID in the Temporal Web UI
 
+## Prerequisites
+
+Start Temporal Server with the custom search attribute:
+```bash
+temporal server start-dev --search-attribute AccountId=Text
+```
+
 ## Implementation Steps
 
 ### Step 1: Set Search Attribute

@@ -1,0 +1,33 @@
+#!/bin/bash
+# ABOUTME: Check script. Fill-in-the-blanks style.
+# Gate 1: TODOs gone. Gate 2: every execute_activity call carries a summary.
+# Gate 3: a Workflow completed.
+fail() { echo "FAIL: $1"; exit 1; }
+pass() { echo "PASS: $1"; }
+
+EX=/root/workshop/exercise5
+WF="$EX/money_transfer_workflow.py"
+
+for f in banking_activities.py money_transfer_workflow.py start_workflow.py; do
+    if grep -q "TODO" "$EX/$f" 2>/dev/null; then
+        fail "$f still has TODO comments. Implement them, then check again."
+    fi
+done
+pass "All TODOs implemented"
+
+SUMMARIES=$(grep -c "summary=" "$WF" 2>/dev/null || true)
+if [ "$SUMMARIES" -lt 3 ]; then
+    fail "Found $SUMMARIES summary= arguments in money_transfer_workflow.py. All three Activities (withdraw, deposit, refund) need one."
+fi
+pass "All three Activities carry a summary"
+
+COMPLETED=$(temporal workflow list \
+    --address 127.0.0.1:7233 \
+    --namespace default \
+    --query 'TaskQueue in ("MoneyTransferTaskQueue", "money-transfer-task-queue") AND ExecutionStatus="Completed"' \
+    --limit 1 2>/dev/null | grep -c "Completed" || true)
+
+if [ "$COMPLETED" -lt 1 ]; then
+    fail "No completed money transfer Workflow. Start the Worker, run start_workflow.py, and wait for the result to print."
+fi
+pass "Money transfer Workflow completed"

@@ -1,0 +1,56 @@
+# Validate and publish the Instruqt track on merge to main.
+#
+# There is no image build step: the track runs on stock python:3.11 and
+# instruqt/sandbox/setup-workshop provisions it at lab start. So the only
+# artifact CI publishes is the track definition itself.
+#
+# Note that instruqt/sandbox/ is NOT published here. It reaches the sandbox
+# through the git clone that track_scripts/setup-workshop performs, so merging
+# to main is what ships it. See instruqt/sandbox/README.md.
+#
+# Auth: the Instruqt CLI reads the INSTRUQT_TOKEN env var. Set a repo secret
+# named INSTRUQT_TOKEN to an org API key (Instruqt -> Team Settings -> API
+# keys). The destination org comes from `owner:` in track.yml, not a CLI flag.
+#
+# The push is verbatim: whatever `maintenance:` value is committed in
+# track.yml goes live. CI never flips it.
+name: Push Instruqt track
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "instruqt/track/**"
+      - ".github/workflows/push-track.yml"
+  workflow_dispatch:
+
+jobs:
+  push-track:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: instruqt/track
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Instruqt CLI
+        working-directory: .
+        run: |
+          curl -fsSL \
+            https://github.com/instruqt/cli/releases/latest/download/instruqt-linux.zip \
+            -o instruqt.zip
+          unzip -q instruqt.zip
+          sudo install -m 0755 instruqt /usr/local/bin/instruqt
+          instruqt version
+
+      - name: Validate track
+        env:
+          INSTRUQT_TOKEN: ${{ secrets.INSTRUQT_TOKEN }}
+        run: instruqt track validate
+
+      - name: Push track to Instruqt
+        env:
+          INSTRUQT_TOKEN: ${{ secrets.INSTRUQT_TOKEN }}
+        run: instruqt track push --force

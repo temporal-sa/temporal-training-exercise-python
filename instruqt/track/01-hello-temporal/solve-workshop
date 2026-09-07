@@ -1,0 +1,24 @@
+#!/bin/bash
+# ABOUTME: Solve script. Mimics a learner solving the challenge.
+# Runs on Skip and on `instruqt track test`. It must leave the check passing:
+# copy the finished code into the exercise directory, then drive a Workflow
+# to completion on the task queue the check queries.
+set -uo pipefail
+cd /root/workshop || exit 0
+
+cp solution1/greeting_activity.py exercise1/greeting_activity.py
+cp solution1/greeting_workflow.py exercise1/greeting_workflow.py
+cp solution1/start_worker.py      exercise1/start_worker.py
+cp solution1/start_workflow.py    exercise1/start_workflow.py
+
+pkill -f "start_worker" 2>/dev/null || true
+sleep 1
+
+nohup uv run exercise1/start_worker.py > /tmp/solve-01-worker.log 2>&1 &
+WORKER_PID=$!
+sleep 8
+
+timeout 90 uv run exercise1/start_workflow.py
+
+kill "$WORKER_PID" 2>/dev/null || true
+exit 0

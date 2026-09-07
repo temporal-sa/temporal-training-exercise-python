@@ -1,0 +1,23 @@
+#!/bin/bash
+# ABOUTME: Check script. Fill-in-the-blanks style.
+# Gate 1: TODOs gone from both test files.
+# Gate 2: the test suite actually passes.
+fail() { echo "FAIL: $1"; exit 1; }
+pass() { echo "PASS: $1"; }
+
+cd /root/workshop || fail "Workshop directory is missing."
+
+for f in test_banking_activities.py test_money_transfer_workflow.py; do
+    if grep -q "TODO" "exercise6/$f" 2>/dev/null; then
+        fail "$f still has TODO comments. Implement them, then check again."
+    fi
+done
+pass "All TODOs implemented"
+
+# Run from the repo root: the test files use package-relative imports.
+if ! OUT=$(timeout 300 uv run pytest exercise6/ -q 2>&1); then
+    echo "$OUT" | tail -25
+    fail "pytest exercise6/ did not pass. Fix the failures above, then check again."
+fi
+pass "Test suite passes"
+echo "$OUT" | tail -3

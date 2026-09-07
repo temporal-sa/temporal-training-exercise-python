@@ -1,0 +1,27 @@
+#!/bin/bash
+# ABOUTME: Solve script. Copies the finished code in, then drives a transfer
+# to completion.
+#
+# The starter shipped in exercise7 uses two valid accounts, so it completes
+# without needing the retry Signal. That is enough for the check's
+# completed-Workflow gate, and it keeps the skip path from hanging on a
+# Workflow parked in RETRYING.
+set -uo pipefail
+cd /root/workshop || exit 0
+
+cp solution7/banking_activities.py      exercise7/banking_activities.py
+cp solution7/money_transfer_workflow.py exercise7/money_transfer_workflow.py
+
+pkill -f "exercise7.start_worker" 2>/dev/null || true
+pkill -f "start_worker"           2>/dev/null || true
+sleep 1
+
+PYTHONPATH=exercise7 nohup uv run python -m exercise7.start_worker \
+    > /tmp/solve-07-worker.log 2>&1 &
+WORKER_PID=$!
+sleep 8
+
+PYTHONPATH=exercise7 timeout 120 uv run python -m exercise7.start_workflow
+
+kill "$WORKER_PID" 2>/dev/null || true
+exit 0

@@ -1,0 +1,37 @@
+#!/bin/bash
+# ABOUTME: Check script. Fill-in-the-blanks style.
+# Gate 1: TODOs gone from the two files the attendee edits.
+# Gate 2: the non-retryable error and the manual retry loop are both present.
+# Gate 3: a Workflow completed on money-transfer-task-queue.
+fail() { echo "FAIL: $1"; exit 1; }
+pass() { echo "PASS: $1"; }
+
+EX=/root/workshop/exercise7
+
+for f in banking_activities.py money_transfer_workflow.py; do
+    if grep -q "TODO" "$EX/$f" 2>/dev/null; then
+        fail "$f still has TODO comments. Implement them, then check again."
+    fi
+done
+pass "All TODOs implemented"
+
+if ! grep -q "non_retryable" "$EX/banking_activities.py" 2>/dev/null; then
+    fail "banking_activities.py never raises a non_retryable ApplicationError. Automatic retry will keep hammering the bad account."
+fi
+pass "Non-retryable error raised on invalid accounts"
+
+if ! grep -q "wait_condition" "$EX/money_transfer_workflow.py" 2>/dev/null; then
+    fail "money_transfer_workflow.py never waits on a retry Signal. _execute_with_manual_retry needs a wait_condition."
+fi
+pass "Manual retry loop waits for the retry Signal"
+
+COMPLETED=$(temporal workflow list \
+    --address 127.0.0.1:7233 \
+    --namespace default \
+    --query 'TaskQueue="money-transfer-task-queue" AND ExecutionStatus="Completed"' \
+    --limit 1 2>/dev/null | grep -c "Completed" || true)
+
+if [ "$COMPLETED" -lt 1 ]; then
+    fail "No completed Workflow on money-transfer-task-queue. Run the Worker and the starter, then send the retry Signal."
+fi
+pass "Transfer completed after the manual retry"

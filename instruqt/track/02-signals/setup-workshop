@@ -1,0 +1,9 @@
+#!/bin/bash
+# ABOUTME: Per-challenge setup. Clears stragglers from the prior chapter.
+# The whole project is staged once by the track-level setup script.
+set -euo pipefail
+
+pkill -f "start_worker"   2>/dev/null || true
+pkill -f "start_workflow" 2>/dev/null || true
+
+echo "Exercise 2 ready."

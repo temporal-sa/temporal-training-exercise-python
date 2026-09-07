@@ -1,0 +1,8 @@
+{
+  "kill_all": false,
+  "services": {
+    "pypi": true,
+    "github": true,
+    "httpbin": true
+  }
+}

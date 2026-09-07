@@ -1,0 +1,31 @@
+#!/bin/bash
+# ABOUTME: Check script. Fill-in-the-blanks style.
+# Gate 1: the TODO is gone and upsert_search_attributes is called.
+# Gate 2: at least one execution actually carries AccountId="account-123",
+#         which only happens if the upsert succeeded.
+fail() { echo "FAIL: $1"; exit 1; }
+pass() { echo "PASS: $1"; }
+
+EX=/root/workshop/exercise4
+WF="$EX/money_transfer_workflow.py"
+
+if grep -q "TODO" "$WF" 2>/dev/null; then
+    fail "money_transfer_workflow.py still has a TODO. Implement it, then check again."
+fi
+pass "TODO implemented"
+
+if ! grep -q "upsert_search_attributes" "$WF" 2>/dev/null; then
+    fail "money_transfer_workflow.py never calls workflow.upsert_search_attributes()."
+fi
+pass "upsert_search_attributes called"
+
+TAGGED=$(temporal workflow list \
+    --address 127.0.0.1:7233 \
+    --namespace default \
+    --query 'AccountId="account-123"' \
+    --limit 1 2>/dev/null | grep -c "MoneyTransferWorkflow" || true)
+
+if [ "$TAGGED" -lt 1 ]; then
+    fail "No Workflow carries AccountId=\"account-123\" yet. Run the Worker and start_workflow.py, then check again."
+fi
+pass "Workflow found by AccountId search attribute"

@@ -1,0 +1,9 @@
+#!/bin/bash
+# ABOUTME: Per-challenge cleanup. One pkill pattern per line.
+set -euo pipefail
+
+pkill -f "start_worker"   2>/dev/null || true
+pkill -f "start_workflow" 2>/dev/null || true
+sleep 1
+
+echo "Exercise 2 cleanup: OK"

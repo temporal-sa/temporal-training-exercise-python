@@ -1,0 +1,25 @@
+#!/bin/bash
+# ABOUTME: Solve script. Copies the finished code in and runs the tests.
+set -uo pipefail
+cd /root/workshop || exit 0
+
+cp solution8/banking_activities.py         exercise8/banking_activities.py
+cp solution8/money_transfer_workflow.py    exercise8/money_transfer_workflow.py
+cp solution8/start_worker.py               exercise8/start_worker.py
+cp solution8/start_workflow.py             exercise8/start_workflow.py
+cp solution8/test_money_transfer_workflow.py exercise8/test_money_transfer_workflow.py
+cp solution8/workflow_history_v1.json      exercise8/workflow_history_v1.json
+
+pkill -f "start_worker" 2>/dev/null || true
+sleep 1
+
+nohup uv run exercise8/start_worker.py > /tmp/solve-08-worker.log 2>&1 &
+WORKER_PID=$!
+sleep 8
+
+timeout 120 uv run exercise8/start_workflow.py || true
+
+kill "$WORKER_PID" 2>/dev/null || true
+
+PYTHONPATH=exercise8 timeout 300 uv run pytest exercise8/test_money_transfer_workflow.py -q || true
+exit 0

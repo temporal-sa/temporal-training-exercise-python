@@ -1,0 +1,18 @@
+#!/bin/bash
+# ABOUTME: Per-challenge setup. Clears stragglers and makes sure the pre-patch
+# replay history is in place.
+set -euo pipefail
+
+pkill -f "exercise7.start_worker"   2>/dev/null || true
+pkill -f "exercise7.start_workflow" 2>/dev/null || true
+pkill -f "start_worker"             2>/dev/null || true
+pkill -f "start_workflow"           2>/dev/null || true
+
+# The replay test reads this history. The track-level setup seeds it, but seed
+# it here too so an attendee who jumps straight to this challenge is not stuck.
+if [ ! -f /root/workshop/exercise8/workflow_history_v1.json ]; then
+    cp /root/workshop/solution8/workflow_history_v1.json \
+       /root/workshop/exercise8/workflow_history_v1.json 2>/dev/null || true
+fi
+
+echo "Exercise 8 ready."

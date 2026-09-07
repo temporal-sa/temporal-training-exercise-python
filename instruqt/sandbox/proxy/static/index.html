@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Network Control Panel</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --border: #2d3148;
+    --text: #e2e8f0;
+    --muted: #8892a4;
+    --green: #22c55e;
+    --red: #ef4444;
+    --blue: #3b82f6;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    min-height: 100vh;
+    padding: 32px 24px;
+  }
+  h1 { font-size: 1.3rem; font-weight: 600; margin-bottom: 4px; }
+  .subtitle { font-size: 0.8rem; color: var(--muted); margin-bottom: 28px; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    margin-bottom: 14px;
+  }
+  .card-header { display: flex; align-items: center; justify-content: space-between; }
+  .service-name { font-size: 0.95rem; font-weight: 500; }
+  .service-host { font-size: 0.75rem; color: var(--muted); font-family: monospace; margin-top: 2px; }
+  .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 8px; transition: background 0.2s; }
+  .dot-on  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot-off { background: var(--red);   box-shadow: 0 0 6px var(--red); }
+  .toggle { position: relative; display: inline-block; width: 48px; height: 26px; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: var(--red); transition: .25s; border-radius: 26px; }
+  .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 3px; bottom: 3px; background: white; transition: .25s; border-radius: 50%; }
+  input:checked + .slider { background: var(--green); }
+  input:checked + .slider:before { transform: translateX(22px); }
+  #kill-toggle + .slider { background: var(--green); }
+  #kill-toggle:checked + .slider { background: var(--red); }
+  .kill-card { background: #0f1e0f; border: 1px solid #1a5a1a; border-radius: var(--radius); padding: 18px 20px; margin-bottom: 14px; }
+  .kill-card.active { background: #2d0f0f; border-color: var(--red); box-shadow: 0 0 12px rgba(239,68,68,0.25); }
+  .kill-label { font-size: 0.95rem; font-weight: 600; color: var(--green); }
+  .kill-card.active .kill-label { color: var(--red); }
+  .kill-sub { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+  .reset-btn { background: none; border: 1px solid var(--border); color: var(--muted); padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; margin-top: 20px; width: 100%; transition: border-color 0.15s, color 0.15s; }
+  .reset-btn:hover { border-color: var(--blue); color: var(--blue); }
+  .section-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 10px; margin-top: 4px; }
+</style>
+</head>
+<body>
+<h1>Network Control Panel</h1>
+<p class="subtitle">Toggle external service access for the workshop demos</p>
+
+<div class="section-label">External Services</div>
+<div id="services"></div>
+
+<div class="section-label" style="margin-top:20px;">Kill Switch</div>
+<div class="kill-card" id="kill-card">
+  <div class="card-header">
+    <div>
+      <div class="kill-label" id="kill-label">Kill Switch: Network is OPEN</div>
+      <div class="kill-sub" id="kill-sub">All external services are flowing normally</div>
+    </div>
+    <label class="toggle">
+      <input type="checkbox" id="kill-toggle" onchange="toggleKillAll(this.checked)">
+      <span class="slider"></span>
+    </label>
+  </div>
+</div>
+
+<button class="reset-btn" onclick="resetAll()">Re-enable All Services</button>
+
+<script>
+let currentState = {};
+let currentLabels = {};
+
+async function load() {
+  const [stateRes, labelRes] = await Promise.all([fetch('/api/state'), fetch('/api/labels')]);
+  currentState = await stateRes.json();
+  currentLabels = await labelRes.json();
+  renderServices();
+  updateKillCard();
+}
+
+function renderServices() {
+  const container = document.getElementById('services');
+  container.innerHTML = '';
+  for (const [key, label] of Object.entries(currentLabels)) {
+    const enabled = currentState.services[key] !== false;
+    const [name, host] = label.split('  ');
+    container.innerHTML += `
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="service-name">
+              <span class="status-dot ${enabled ? 'dot-on' : 'dot-off'}" id="dot-${key}"></span>${name}
+            </div>
+            <div class="service-host">${host || ''}</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="toggle-${key}" ${enabled ? 'checked' : ''}
+              onchange="toggleService('${key}', this.checked)">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>`;
+  }
+}
+
+function updateKillCard() {
+  const active = currentState.kill_all;
+  document.getElementById('kill-toggle').checked = active;
+  document.getElementById('kill-card').classList.toggle('active', active);
+  document.getElementById('kill-label').textContent = active
+    ? 'Kill Switch: Network is BLOCKED'
+    : 'Kill Switch: Network is OPEN';
+  document.getElementById('kill-sub').textContent = active
+    ? 'All external traffic is currently blocked'
+    : 'All external services are flowing normally';
+}
+
+async function toggleService(key, enabled) {
+  await fetch('/api/service/' + key, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({enabled})
+  });
+  currentState.services[key] = enabled;
+  const dot = document.getElementById('dot-' + key);
+  if (dot) dot.className = 'status-dot ' + (enabled ? 'dot-on' : 'dot-off');
+}
+
+async function toggleKillAll(enabled) {
+  await fetch('/api/kill_all', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({enabled})
+  });
+  currentState.kill_all = enabled;
+  updateKillCard();
+}
+
+async function resetAll() {
+  currentState.kill_all = false;
+  for (const k of Object.keys(currentState.services)) currentState.services[k] = true;
+  await fetch('/api/state', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(currentState)
+  });
+  load();
+}
+
+load();
+setInterval(load, 4000);
+</script>
+</body>
+</html>

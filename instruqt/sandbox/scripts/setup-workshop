@@ -1,0 +1,224 @@
+#!/bin/bash
+# ABOUTME: Sandbox preset setup script. Provisions the whole workshop sandbox.
+#
+# This is the preset's lifecycle script, named for the container in
+# ../config.yml. It ships with `instruqt sandbox push` + `instruqt sandbox
+# publish`, NOT with `instruqt track push`, and it replaces what used to be
+# the track's track_scripts/setup-workshop.
+#
+# Because it arrives with the preset rather than inside a git clone, it can
+# install its own dependencies, git included. The base image is relied on for
+# nothing beyond a Debian userland.
+#
+# Steps:
+#   1. System packages, git included
+#   2. Clone the exercise repo
+#   3. uv and Python 3.11
+#   4. Temporal CLI
+#   5. Workshop dependencies
+#   6. mitmproxy, Flask and the mitmproxy CA cert
+#   7. The network control panel
+#   8. Environment for every shell
+#   9. Start the proxy, the control panel and the Temporal dev server
+#  10. Seed the exercise 8 replay history
+#
+# Each step would be a `docker build` layer if the track used a baked image.
+# See ../README.md for how to ship a change to this file.
+set -euo pipefail
+
+# Pin these to a tag or a commit before a live workshop so every attendee gets
+# the same code regardless of what landed on main that morning.
+WORKSHOP_REPO="${WORKSHOP_REPO:-https://github.com/temporal-sa/temporal-training-exercise-python.git}"
+WORKSHOP_REF="${WORKSHOP_REF:-main}"
+WORKSHOP_DIR="${WORKSHOP_DIR:-/root/workshop}"
+PYTHON_VERSION="3.11"
+
+log() { echo "==> $*"; }
+
+# 0. Wait for Instruqt host bootstrap.
+until [ -f /opt/instruqt/bootstrap/host-bootstrap-completed ]; do
+    sleep 1
+done
+
+# 1. System packages. The complete list, git included: nothing here is
+#    inherited from the base image, so add a new binary dependency to this
+#    list and nowhere else.
+log "Installing system packages"
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq
+apt-get install -y -qq --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    jq \
+    unzip \
+    less \
+    vim-tiny \
+    nano \
+    bash-completion
+
+# 2. Clone the exercise repo. Only the exercise and solution code needs
+#    fetching now; this script is already here.
+#    Skipped when the directory exists, which is how a local test run points
+#    the sandbox at an uncommitted working tree.
+if [ ! -d "${WORKSHOP_DIR}" ]; then
+    log "Cloning ${WORKSHOP_REPO} at ${WORKSHOP_REF}"
+    git clone --depth 1 --branch "${WORKSHOP_REF}" "${WORKSHOP_REPO}" "${WORKSHOP_DIR}"
+else
+    log "${WORKSHOP_DIR} already exists, skipping the clone"
+fi
+
+# 3. uv, then the interpreter. UV_INSTALL_DIR puts uv on the default PATH,
+#    which matters because the check and solve scripts run non-interactively
+#    and never source a profile.
+#
+#    The interpreter comes from uv rather than the base image, so the Python
+#    version is pinned by this script. PYTHON_VERSION above is the one place
+#    to change it, and it tracks .python-version.
+log "Installing uv"
+curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+
+log "Installing Python ${PYTHON_VERSION}"
+uv python install "${PYTHON_VERSION}"
+
+# 4. Temporal CLI.
+log "Installing the Temporal CLI"
+curl -sSf https://temporal.download/cli.sh | sh
+ln -sf /root/.temporalio/bin/temporal /usr/local/bin/temporal
+
+# 5. Workshop dependencies. The venv lives in the tree at
+#    ${WORKSHOP_DIR}/.venv because nothing gets staged or copied afterwards.
+log "Syncing workshop dependencies"
+cd "${WORKSHOP_DIR}"
+uv sync --frozen
+
+# Point bare `python` and `python3` at the project venv. The base image has no
+# system python at all, and the assignments all use `uv run`, but a learner in
+# a Python workshop will type `python3` sooner or later. Resolving it to the
+# venv means temporalio is importable, which apt's python3 would not give.
+#
+# A wrapper, not a symlink: .venv/bin/python is itself a symlink to the
+# uv-managed interpreter, and a second symlink hop makes Python resolve its
+# home outside the venv, so `import temporalio` fails. Exec'ing the venv
+# binary by its own path keeps sys.prefix inside the venv.
+for name in python python3; do
+    printf '#!/bin/sh\nexec %s/.venv/bin/python "$@"\n' "${WORKSHOP_DIR}" \
+        > "/usr/local/bin/${name}"
+    chmod 0755 "/usr/local/bin/${name}"
+done
+
+# 6. mitmproxy and Flask, in their own venv so workshop dependency resolution
+#    never has to accommodate them.
+log "Installing mitmproxy and the control panel dependencies"
+uv venv --python "${PYTHON_VERSION}" /opt/proxy-venv
+VIRTUAL_ENV=/opt/proxy-venv uv pip install --quiet mitmproxy flask
+ln -sf /opt/proxy-venv/bin/mitmdump /usr/local/bin/mitmdump
+
+# Generate the CA cert by starting mitmdump briefly, then trust it system-wide
+# and append it to the workshop venv's certifi bundle so Python HTTPS calls
+# through the proxy validate.
+log "Generating and trusting the mitmproxy CA cert"
+mitmdump --listen-port 8889 --set block_global=false > /tmp/mitm-init.log 2>&1 &
+MITM_INIT_PID=$!
+sleep 6
+kill "${MITM_INIT_PID}" 2>/dev/null || true
+wait "${MITM_INIT_PID}" 2>/dev/null || true
+
+MITM_CA=/root/.mitmproxy/mitmproxy-ca-cert.pem
+cp "${MITM_CA}" /usr/local/share/ca-certificates/mitmproxy-ca.crt
+update-ca-certificates
+for bundle in "${WORKSHOP_DIR}"/.venv/lib/python*/site-packages/certifi/cacert.pem; do
+    [ -f "${bundle}" ] && cat "${MITM_CA}" >> "${bundle}" \
+        && log "Patched certifi bundle at ${bundle}"
+done
+
+# 7. Network control panel. These files come from the clone, so WORKSHOP_REF
+#    has to name a ref that contains instruqt/sandbox/proxy/. The addon and
+#    the panel both read and write /root/proxy/state.json, so they get a
+#    writable copy of their own.
+PROXY_SRC="${WORKSHOP_DIR}/instruqt/sandbox/proxy"
+if [ ! -d "${PROXY_SRC}" ]; then
+    echo "ERROR: ${PROXY_SRC} is missing." >&2
+    echo "       WORKSHOP_REF=${WORKSHOP_REF} does not contain instruqt/sandbox/proxy/." >&2
+    exit 1
+fi
+
+log "Staging the network control panel"
+mkdir -p /root/proxy/static
+cp -r "${PROXY_SRC}/." /root/proxy/
+
+# 8. Environment for every shell.
+#    /etc/profile.d covers login shells and the /etc/bash.bashrc line covers
+#    interactive non-login shells, which is what Instruqt's terminal tabs
+#    open. Putting them only in /etc/bash.bashrc does not work: Ubuntu's
+#    /root/.bashrc returns early for non-interactive shells.
+#
+#    NO_PROXY keeps loopback traffic off mitmproxy. The Temporal SDK talks
+#    gRPC to 127.0.0.1:7233 and would not be proxied anyway, but being
+#    explicit avoids surprises if a learner curls the dev server.
+log "Writing shell environment"
+cat > /etc/profile.d/workshop.sh << EOF
+export TEMPORAL_ADDRESS="127.0.0.1:7233"
+export PYTHONUNBUFFERED=1
+export HTTP_PROXY="http://127.0.0.1:8888"
+export HTTPS_PROXY="http://127.0.0.1:8888"
+export http_proxy="http://127.0.0.1:8888"
+export https_proxy="http://127.0.0.1:8888"
+export NO_PROXY="127.0.0.1,localhost"
+export no_proxy="127.0.0.1,localhost"
+export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+export NODE_EXTRA_CA_CERTS=${MITM_CA}
+EOF
+chmod 0644 /etc/profile.d/workshop.sh
+
+if ! grep -q 'profile.d/workshop.sh' /etc/bash.bashrc 2>/dev/null; then
+    cat >> /etc/bash.bashrc << EOF
+
+# Workshop environment
+[ -f /etc/profile.d/workshop.sh ] && . /etc/profile.d/workshop.sh
+[ -f /usr/share/bash-completion/bash_completion ] && . /usr/share/bash-completion/bash_completion
+cd ${WORKSHOP_DIR} 2>/dev/null || true
+EOF
+fi
+
+# 9. Start background services.
+log "Starting the proxy and the control panel"
+nohup mitmdump \
+    --listen-port 8888 \
+    --set block_global=false \
+    --set ssl_insecure=false \
+    -s /root/proxy/toggle_addon.py \
+    > /tmp/proxy.log 2>&1 &
+
+nohup /opt/proxy-venv/bin/python /root/proxy/controlpanel.py \
+    > /tmp/controlpanel.log 2>&1 &
+
+# AccountId is registered up front because exercise 4 upserts it as a search
+# attribute. A dev server started without it fails that Workflow Task.
+log "Starting the Temporal dev server"
+nohup temporal server start-dev \
+    --ip 0.0.0.0 \
+    --db-filename /root/temporal.db \
+    --search-attribute AccountId=Text \
+    --log-level warn \
+    > /tmp/temporal-server.log 2>&1 &
+
+for _ in $(seq 1 60); do
+    if temporal operator cluster health --address 127.0.0.1:7233 >/dev/null 2>&1; then
+        log "Temporal server healthy"
+        break
+    fi
+    sleep 1
+done
+
+# 10. Seed the exercise 8 replay history.
+#     Exercise 8 asks the attendee to replay a pre-patch event history. Task 4
+#     of that exercise walks through generating one by hand. Seeding the copy
+#     from solution8 means the replay test is runnable without that detour.
+if [ ! -f "${WORKSHOP_DIR}/exercise8/workflow_history_v1.json" ]; then
+    cp "${WORKSHOP_DIR}/solution8/workflow_history_v1.json" \
+       "${WORKSHOP_DIR}/exercise8/workflow_history_v1.json" 2>/dev/null || true
+fi
+
+log "Sandbox provisioning complete."

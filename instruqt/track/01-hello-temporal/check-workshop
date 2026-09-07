@@ -1,0 +1,26 @@
+#!/bin/bash
+# ABOUTME: Check script. Fill-in-the-blanks style.
+# Gate 1: every TODO in the exercise files is gone.
+# Gate 2: a Workflow completed on hello-task-queue.
+fail() { echo "FAIL: $1"; exit 1; }
+pass() { echo "PASS: $1"; }
+
+EX=/root/workshop/exercise1
+
+for f in greeting_activity.py greeting_workflow.py start_worker.py start_workflow.py; do
+    if grep -q "TODO" "$EX/$f" 2>/dev/null; then
+        fail "$f still has TODO comments. Implement them, then check again."
+    fi
+done
+pass "All TODOs implemented"
+
+COMPLETED=$(temporal workflow list \
+    --address 127.0.0.1:7233 \
+    --namespace default \
+    --query 'TaskQueue="hello-task-queue" AND ExecutionStatus="Completed"' \
+    --limit 1 2>/dev/null | grep -c "Completed" || true)
+
+if [ "$COMPLETED" -lt 1 ]; then
+    fail "No completed Workflow on hello-task-queue. Start the Worker, run start_workflow.py, and wait for the greeting to print."
+fi
+pass "Workflow completed on hello-task-queue"

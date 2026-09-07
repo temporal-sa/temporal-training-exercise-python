@@ -149,3 +149,42 @@ uv run pytest solution8/test_money_transfer_workflow.py -v
 - **Unit Testing:** Testing workflows and activities with mocked dependencies
 - **Manual Activity Retry:** Signal-based retry patterns and error correction
 - **Workflow Versioning:** Safe evolution with `workflow.patched()` and replay testing
+
+---
+
+## Instruqt Track: Temporal in Practice
+
+These eight exercises are also packaged as an Instruqt hands-on lab called
+**Temporal in Practice**. Attendees get a container sandbox with a Temporal dev
+server already running, the native code editor pointed at the exercise
+directory, and the finished solution one tab away.
+
+```
+instruqt/
+├── README.md     Full track documentation
+├── track/        The track definition (track.yml, config.yml, 8 challenges)
+└── sandbox/      Sandbox provisioning + the network control panel it stages
+                  (has its own README on shipping sandbox changes)
+```
+
+There is no sandbox image to build. The track runs on stock `python:3.11`:
+`instruqt/track/track_scripts/setup-workshop` clones this repo and hands off to
+`instruqt/sandbox/setup-workshop`, which installs the toolchain and starts the
+Temporal dev server. Instruqt's Hot Start pre-provisions that work ahead of the
+session, so attendees do not wait on it.
+
+Publish the track with the Instruqt CLI from `instruqt/track/`:
+
+```bash
+cd instruqt/track
+instruqt track validate    # local validation, no push
+instruqt track push        # publish
+instruqt track test        # run every solve script end to end
+```
+
+See [instruqt/README.md](instruqt/README.md) for the layout, what
+`setup-workshop` provisions and what that costs, the network control panel, the
+tab inventory, how to boot and test a sandbox locally with Docker, and the
+pre-flight checklist before a live session. It also records a handful of
+exercise-code quirks the track works around, including the `PYTHONPATH` that
+`exercise7` and `exercise8` need.

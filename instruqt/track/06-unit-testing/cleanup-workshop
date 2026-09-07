@@ -1,0 +1,8 @@
+#!/bin/bash
+# ABOUTME: Per-challenge cleanup. Nothing long-running here, but clear the
+# pytest cache so the next chapter starts from a clean tree.
+set -euo pipefail
+
+rm -rf /root/workshop/.pytest_cache 2>/dev/null || true
+
+echo "Exercise 6 cleanup: OK"

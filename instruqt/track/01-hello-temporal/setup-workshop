@@ -1,0 +1,12 @@
+#!/bin/bash
+# ABOUTME: Per-challenge setup. Runs when the attendee enters this challenge.
+#
+# No sparse-staging here. The eight exercises are one uv project rooted at
+# /root/workshop, so the whole tree is staged once by the track-level setup
+# script. Per-challenge setup only clears stragglers from a prior chapter.
+set -euo pipefail
+
+pkill -f "start_worker"   2>/dev/null || true
+pkill -f "start_workflow" 2>/dev/null || true
+
+echo "Exercise 1 ready."

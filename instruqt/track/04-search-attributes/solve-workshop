@@ -1,0 +1,21 @@
+#!/bin/bash
+# ABOUTME: Solve script. Copies the finished code in, then runs a Workflow so
+# an execution actually carries the AccountId search attribute.
+set -uo pipefail
+cd /root/workshop || exit 0
+
+cp solution4/money_transfer_workflow.py exercise4/money_transfer_workflow.py
+cp solution4/banking_activities.py      exercise4/banking_activities.py
+cp solution4/start_workflow.py          exercise4/start_workflow.py
+
+pkill -f "start_worker" 2>/dev/null || true
+sleep 1
+
+nohup uv run exercise4/start_worker.py > /tmp/solve-04-worker.log 2>&1 &
+WORKER_PID=$!
+sleep 8
+
+timeout 120 uv run exercise4/start_workflow.py
+
+kill "$WORKER_PID" 2>/dev/null || true
+exit 0

@@ -1,0 +1,21 @@
+#!/bin/bash
+# ABOUTME: Solve script. Copies the finished code in, then drives a Workflow
+# to completion so the check's Temporal-side gate passes.
+set -uo pipefail
+cd /root/workshop || exit 0
+
+cp solution2/banking_activities.py     exercise2/banking_activities.py
+cp solution2/money_transfer_workflow.py exercise2/money_transfer_workflow.py
+cp solution2/start_workflow.py         exercise2/start_workflow.py
+
+pkill -f "start_worker" 2>/dev/null || true
+sleep 1
+
+nohup uv run exercise2/start_worker.py > /tmp/solve-02-worker.log 2>&1 &
+WORKER_PID=$!
+sleep 8
+
+timeout 120 uv run exercise2/start_workflow.py
+
+kill "$WORKER_PID" 2>/dev/null || true
+exit 0

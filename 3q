@@ -1,0 +1,2086 @@
+Add tests to solutions
+
+# Please enter the commit message for your changes. Lines starting
+# with '#' will be ignored, and an empty message aborts the commit.
+#
+# Date:      Mon Sep 7 21:04:57 2026 +1000
+#
+# On branch main
+# Your branch is up to date with 'origin/main'.
+#
+# Changes to be committed:
+#	deleted:    .github/workflows/push-track.yml
+#	new file:   .github/workflows/tests.yml
+#	modified:   README.md
+#	modified:   instruqt/README.md
+#	new file:   run_tests.py
+#	new file:   solution1/conftest.py
+#	new file:   solution1/test_greeting_activity.py
+#	new file:   solution1/test_greeting_workflow.py
+#	new file:   solution2/conftest.py
+#	new file:   solution2/test_banking_activities.py
+#	new file:   solution2/test_money_transfer_workflow.py
+#	new file:   solution3/conftest.py
+#	new file:   solution3/test_money_transfer_workflow.py
+#	new file:   solution4/conftest.py
+#	new file:   solution4/test_money_transfer_workflow.py
+#	new file:   solution5/conftest.py
+#	new file:   solution5/test_money_transfer_workflow.py
+#	new file:   solution7/conftest.py
+#	new file:   solution7/test_banking_activities.py
+#	new file:   solution7/test_money_transfer_workflow.py
+#	new file:   solution8/conftest.py
+#
+# ------------------------ >8 ------------------------
+# Do not modify or remove the line above.
+# Everything below it will be ignored.
+diff --git a/.github/workflows/push-track.yml b/.github/workflows/push-track.yml
+deleted file mode 100644
+index f1ca980..0000000
+--- a/.github/workflows/push-track.yml
++++ /dev/null
+@@ -1,56 +0,0 @@
+-# Validate and publish the Instruqt track on merge to main.
+-#
+-# There is no image build step: the track runs on stock python:3.11 and
+-# instruqt/sandbox/setup-workshop provisions it at lab start. So the only
+-# artifact CI publishes is the track definition itself.
+-#
+-# Note that instruqt/sandbox/ is NOT published here. It reaches the sandbox
+-# through the git clone that track_scripts/setup-workshop performs, so merging
+-# to main is what ships it. See instruqt/sandbox/README.md.
+-#
+-# Auth: the Instruqt CLI reads the INSTRUQT_TOKEN env var. Set a repo secret
+-# named INSTRUQT_TOKEN to an org API key (Instruqt -> Team Settings -> API
+-# keys). The destination org comes from `owner:` in track.yml, not a CLI flag.
+-#
+-# The push is verbatim: whatever `maintenance:` value is committed in
+-# track.yml goes live. CI never flips it.
+-name: Push Instruqt track
+-
+-on:
+-  push:
+-    branches: [main]
+-    paths:
+-      - "instruqt/track/**"
+-      - ".github/workflows/push-track.yml"
+-  workflow_dispatch:
+-
+-jobs:
+-  push-track:
+-    runs-on: ubuntu-latest
+-    permissions:
+-      contents: read
+-    defaults:
+-      run:
+-        working-directory: instruqt/track
+-    steps:
+-      - uses: actions/checkout@v4
+-
+-      - name: Install Instruqt CLI
+-        working-directory: .
+-        run: |
+-          curl -fsSL \
+-            https://github.com/instruqt/cli/releases/latest/download/instruqt-linux.zip \
+-            -o instruqt.zip
+-          unzip -q instruqt.zip
+-          sudo install -m 0755 instruqt /usr/local/bin/instruqt
+-          instruqt version
+-
+-      - name: Validate track
+-        env:
+-          INSTRUQT_TOKEN: ${{ secrets.INSTRUQT_TOKEN }}
+-        run: instruqt track validate
+-
+-      - name: Push track to Instruqt
+-        env:
+-          INSTRUQT_TOKEN: ${{ secrets.INSTRUQT_TOKEN }}
+-        run: instruqt track push --force
+diff --git a/.github/workflows/tests.yml b/.github/workflows/tests.yml
+new file mode 100644
+index 0000000..ada4ba1
+--- /dev/null
++++ b/.github/workflows/tests.yml
+@@ -0,0 +1,37 @@
++# Run the solution unit tests on every push and pull request.
++#
++# The tests need no Temporal server of their own: each solution directory's
++# conftest.py starts a throwaway one with WorkflowEnvironment.start_local(),
++# which downloads and caches the Temporal CLI binary on first use.
++#
++# run_tests.py runs one pytest process per solution directory. That is not a
++# nicety: the exercises import their modules by flat name, so a single pytest
++# process over the repo would import whichever directory it reached first and
++# hand those modules to the rest. See the README.
++name: Tests
++
++on:
++  push:
++    branches: [main]
++  pull_request:
++  workflow_dispatch:
++
++jobs:
++  tests:
++    runs-on: ubuntu-latest
++    permissions:
++      contents: read
++    steps:
++      - uses: actions/checkout@v4
++
++      # Pinned to an exact release: setup-uv publishes no moving major tag
++      # above v7, so `@v10` does not resolve. Reads the interpreter version
++      # from .python-version, and caches downloads by default.
++      - name: Install uv
++        uses: astral-sh/setup-uv@v10.0.1
++
++      - name: Install dependencies
++        run: uv sync --locked
++
++      - name: Run solution tests
++        run: uv run python run_tests.py
+diff --git a/README.md b/README.md
+index e601be2..baadc04 100644
+--- a/README.md
++++ b/README.md
+@@ -105,6 +105,49 @@ uv run exercise6/run_tests.py
+ 
+ Complete solutions are available in the `solution{N}/` directories for reference.
+ 
++### Running the Solution Tests
++
++Every solution directory carries unit tests for the concept its exercise
++teaches. Run them all:
++
++```bash
++uv run python run_tests.py
++```
++
++Or run one directory at a time:
++
++```bash
++cd solution3
++uv run pytest -v
++```
++
++Each directory needs its own pytest process, and `run_tests.py` gives it one.
++The exercises import their modules by flat name (`from banking_activities
++import withdraw`) so that `start_worker.py` runs as a plain script, which means
++`money_transfer_workflow` resolves to a different file in each directory. A
++single pytest process over the whole repo would import whichever directory it
++reached first and hand those modules to the rest.
++
++The tests need no running server: `WorkflowEnvironment.start_local()` starts a
++throwaway one, shared per directory by the `env` fixture in `conftest.py`.
++Where an exercise's activities fail at random, the workflow tests register
++stubs under the same activity names so the workflow code under test is
++unchanged but the outcome is not a coin flip.
++
++| Directory | What its tests cover |
++|---|---|
++| `solution1` | Activity in isolation with `ActivityEnvironment`; workflow delegating to it |
++| `solution2` | Simulated activity failures; approve and reject paths; buffered signals |
++| `solution3` | Query handlers at each stage, including mid-deposit and after close |
++| `solution4` | `AccountId` search attribute set on a running workflow, and filtering by it |
++| `solution5` | Activity summaries read back out of event history |
++| `solution6` | Activities and workflow, as written for the testing exercise |
++| `solution7` | Non-retryable `ApplicationError`, and correcting input with retry signals |
++| `solution8` | Patched workflow, plus replay of pre-versioning history |
++
++Solutions 3, 4, and 5 reuse `solution2`'s activities unchanged, so their tests
++cover only the workflow behaviour each one adds.
++
+ ### Solution 6: Unit Testing
+ Comprehensive unit tests for Temporal workflows and activities:
+ - Activity testing with mocked failures
+@@ -134,7 +177,8 @@ Safe workflow evolution using the Patched API:
+ 
+ **Running Tests:**
+ ```bash
+-uv run pytest solution8/test_money_transfer_workflow.py -v
++cd solution8
++uv run pytest -v
+ ```
+ 
+ ## Key Concepts Covered
+@@ -161,30 +205,27 @@ directory, and the finished solution one tab away.
+ 
+ ```
+ instruqt/
+-├── README.md     Full track documentation
+-├── track/        The track definition (track.yml, config.yml, 8 challenges)
+-└── sandbox/      Sandbox provisioning + the network control panel it stages
+-                  (has its own README on shipping sandbox changes)
++├── README.md     How to push the track and the sandbox
++├── track/        The track definition: track.yml + 8 challenge directories
++└── sandbox/      An Instruqt sandbox preset, pushed separately from the track
++                  (has its own README on provisioning and the proxy panel)
+ ```
+ 
+-There is no sandbox image to build. The track runs on stock `python:3.11`:
+-`instruqt/track/track_scripts/setup-workshop` clones this repo and hands off to
+-`instruqt/sandbox/setup-workshop`, which installs the toolchain and starts the
+-Temporal dev server. Instruqt's Hot Start pre-provisions that work ahead of the
+-session, so attendees do not wait on it.
++There is no image to build. The preset's `scripts/setup-workshop` installs the
++toolchain on stock `ubuntu:24.04`, clones this repo, and starts the Temporal dev
++server. Hot Start pre-provisions all of that ahead of the session, so attendees
++do not wait on it.
+ 
+-Publish the track with the Instruqt CLI from `instruqt/track/`:
++The track and the sandbox are separate artifacts with separate commands, and
++this repo's exercise code is part of neither push — it arrives through the git
++clone that provisioning performs:
+ 
+ ```bash
+-cd instruqt/track
+-instruqt track validate    # local validation, no push
+-instruqt track push        # publish
+-instruqt track test        # run every solve script end to end
++cd instruqt/track && instruqt track push      # assignments, track.yml
++cd instruqt/sandbox && instruqt sandbox push  # then: instruqt sandbox publish
++git push                                      # exercise code, proxy files
+ ```
+ 
+-See [instruqt/README.md](instruqt/README.md) for the layout, what
+-`setup-workshop` provisions and what that costs, the network control panel, the
+-tab inventory, how to boot and test a sandbox locally with Docker, and the
+-pre-flight checklist before a live session. It also records a handful of
+-exercise-code quirks the track works around, including the `PYTHONPATH` that
+-`exercise7` and `exercise8` need.
++See [instruqt/README.md](instruqt/README.md) for which change needs which
++command, the gotchas on each, and the pre-flight checklist before a live
++session.
+diff --git a/instruqt/README.md b/instruqt/README.md
+index a3c2f0d..7ee8f55 100644
+--- a/instruqt/README.md
++++ b/instruqt/README.md
+@@ -1,498 +1,140 @@
+ # Temporal in Practice: Instruqt Track
+ 
+-The eight exercises in this repo, packaged as an Instruqt hands-on lab. Slug
+-`temporal-in-practice`, owner `temporal`.
+-
+-Attendees get a container sandbox with a Temporal dev server already running,
+-the native code editor pointed at the exercise directory, and the finished
+-solution one tab away.
+-
+-## Two subfolders
++The eight exercises in this repo, packaged as an Instruqt lab. Attendees get a
++container sandbox with a Temporal dev server already running, the code editor on
++the exercise directory, and the finished solution one tab away.
+ 
+ ```
+ instruqt/
+-├── track/      The track definition. This is what `instruqt track push` uploads.
+-└── sandbox/    Sandbox provisioning and the files it stages at runtime.
++├── track/       8 challenge directories + track.yml   ->  instruqt track push
++└── sandbox/     config.yml + scripts/                 ->  instruqt sandbox push
++                 proxy/                                ->  git push
+ ```
+ 
+-There is **no sandbox image to build and no Dockerfile**. `config.yml` points
+-at stock `python:3.11` from Docker Hub and the sandbox provisions itself at lab
+-start. The only artifact that ever gets published is the track definition.
+-
+-### The two setup scripts
+-
+-Provisioning is split across the two folders:
+-
+-| File | Ships with | Job |
+-|------|-----------|-----|
+-| `track/track_scripts/setup-workshop` | `instruqt track push` | Wait for bootstrap, clone the repo, hand off. Installs nothing. |
+-| `sandbox/setup-workshop` | the git clone | All the real provisioning |
+-
+-The thin one does only what has to happen before the other file exists on
+-disk. It then `exec`s `/root/workshop/instruqt/sandbox/setup-workshop`.
+-
+-> [!IMPORTANT]
+-> Edits to `sandbox/setup-workshop` do **not** take effect on `instruqt track
+-> push`. That file is read from the clone, so it has to be pushed to
+-> `WORKSHOP_REF` first. Only the thin track script travels with the track.
+-
+-#### Why `track_scripts/` at all
+-
+-`track_scripts/` is **optional**. `instruqt track validate` passes with the
+-directory absent, and there is no track-level `cleanup-workshop` here: the
+-container is destroyed at teardown and this track creates nothing outside it,
+-so killing processes on the way out would be dead code.
+-
+-`setup-workshop` stays because it is the only hook that runs **once per
+-sandbox, before any challenge**. The alternative is per-challenge
+-`setup-workshop`, which breaks two ways here:
+-
+-- `skipping_enabled: true` lets an attendee open challenge 5 first, so
+-  per-challenge provisioning would have to live in all eight, or in a shared
+-  script guarded by a sentinel.
+-- Hot Start warms a pool by provisioning sandboxes. Challenge setup runs when
+-  an attendee enters a challenge, which is after they have been handed a
+-  sandbox, so provisioning there would not be pre-warmed and challenge 1 would
+-  stall for minutes.
++## Three ways a change ships
+ 
+-Anything in `track_scripts/` must be named for a host in `config.yml`.
+-`setup-wronghost` fails validation with `references unknown host`.
++| What you edited | How it ships | Live at |
++|---|---|---|
++| `track/` — assignments, lifecycle scripts, `track.yml` | `instruqt track push` | next lab start |
++| `sandbox/config.yml`, `sandbox/scripts/` | `instruqt sandbox push` then `publish` | next sandbox provision |
++| `sandbox/proxy/`, `exercise*/`, `solution*/` | `git push` to `WORKSHOP_REF` | next sandbox provision |
+ 
+-### `track/`
++The track and the sandbox preset are separate Instruqt entities:
++`instruqt track push` does not touch the preset, and `instruqt sandbox push`
++does not touch the track. The track carries no `config.yml` and no
++`track_scripts/` — `track.yml` names the preset instead:
+ 
++```yaml
++sandbox_preset: temporal-in-practice-sandbox-python
+ ```
+-track/
+-├── track.yml                     Metadata, time limits, loading cards
+-├── config.yml                    Container sandbox: base image, memory, exposed ports
+-├── track_scripts/
+-│   └── setup-workshop            Thin bootstrap: clone, then hand off to sandbox/
+-├── 01-hello-temporal/            One directory per exercise, numbered sequentially
+-├── 02-signals/
+-├── 03-queries/
+-├── 04-search-attributes/
+-├── 05-activity-summaries/
+-├── 06-unit-testing/
+-├── 07-manual-retry/
+-└── 08-versioning/
+-    ├── assignment.md             Frontmatter (tabs, notes) + challenge body
+-    ├── setup-workshop            Runs when the challenge starts
+-    ├── check-workshop            Runs when the attendee clicks Check
+-    ├── solve-workshop            Runs on Skip and on `instruqt track test`
+-    └── cleanup-workshop          Runs when the challenge ends
+-```
+-
+-Instruqt derives challenge order from directory sort order, so the `NN-`
+-prefixes have to stay sequential and `track.yml` must have no `challenges:`
+-block. Lifecycle script filenames are suffixed with the hostname from
+-`config.yml` (`workshop`).
+-
+-> [!WARNING]
+-> Instruqt parses every file inside a challenge directory as a lifecycle
+-> script. A stray diagram or image next to `assignment.md` breaks the track.
+-> Shared assets belong under `sandbox/` or inline in the markdown.
+-
+-### `sandbox/`
+-
+-```
+-sandbox/
+-├── README.md                     How to ship a sandbox change
+-├── setup-workshop                All the provisioning. See below.
+-└── proxy/                        Network control panel
+-    ├── toggle_addon.py           mitmproxy addon, re-reads state.json per request
+-    ├── controlpanel.py           Flask UI + REST API on port 5000
+-    ├── state.json                Default toggle state
+-    └── static/index.html         The toggle UI
+-```
+-
+-These files reach the sandbox through the git clone the track script
+-performs, then get copied to `/root/proxy/` so the addon and the panel have a
+-writable `state.json`. Any ref you pin `WORKSHOP_REF` to therefore has to
+-contain `instruqt/sandbox/proxy/`; the setup script fails with an explicit
+-message if it does not.
+-
+-## What provisioning does
+-
+-`track/track_scripts/setup-workshop` waits for the Instruqt bootstrap marker,
+-clones this repo to `/root/workshop`, and hands off. It installs nothing: the
+-base image already ships `git`, which is the only binary a clone needs. Then
+-`sandbox/setup-workshop` does the work, in order:
+-
+-1. System packages the base image lacks: `jq`, `less`, `vim-tiny`, `nano`,
+-   `bash-completion`.
+-2. `uv`, installed to `/usr/local/bin`. No interpreter download, because
+-   `python:3.11` already satisfies `.python-version`.
+-3. The Temporal CLI, symlinked to `/usr/local/bin/temporal`.
+-4. `uv sync --frozen` in `/root/workshop`.
+-5. mitmproxy and Flask into `/opt/proxy-venv`, plus the mitmproxy CA cert
+-   trusted system-wide and appended to the workshop venv's certifi bundle.
+-6. The network control panel staged to `/root/proxy/`.
+-7. Shell environment written to `/etc/profile.d/workshop.sh`.
+-8. mitmproxy, the control panel, and `temporal server start-dev` started in the
+-   background, then a health wait.
+-9. The exercise 8 replay history seeded from `solution8/`.
+-
+-### What this costs
+-
+-All of it runs at sandbox provision time. Measured at about 30 seconds on
+-`python:3.11`, against roughly ten for a fully baked image, so the gap is
+-small and **Hot Start absorbs it entirely** (see below). What Hot Start does
+-not fix:
+-
+-- **No version pinning by default.** `WORKSHOP_REF` defaults to `main`, and
+-  apt, `uv`, and the Temporal CLI installer all resolve to whatever is current
+-  when the sandbox is provisioned. **Pin `WORKSHOP_REF` to a tag or commit
+-  before a live workshop**, so a pool warmed at 9am and one warmed at 11am
+-  contain the same code.
+-- **No warm caches.** The first `uv run` in each challenge is a cold start.
+-- **Sensitive to upstream blips.** Debian mirrors, GitHub, PyPI, and
+-  `temporal.download` are all in the critical path. A failure in any of them
+-  while a pool is warming produces broken sandboxes in the pool.
+-
+-If provisioning time or reproducibility becomes a real problem, the fix is to
+-move steps 1 through 5 into a Dockerfile, publish the image, and point
+-`config.yml` at it. `sandbox/setup-workshop` then shrinks to steps 6 through 9,
+-and the split already isolates that change to one file.
+-
+-### Hot Start
+-
+-Hot Start pre-provisions a pool of sandboxes before the session and hands one
+-out instantly when an attendee clicks Start. It is the supported mechanism for
+-more than roughly five simultaneous starts; without it, ~30 concurrent starts
+-hit `Failed to start track`. It also means nobody waits on the provisioning
+-above, because it already ran.
+-
+-It is a web-UI setting with no CLI equivalent, so it cannot live in
+-`track.yml`. Enable it under Track Settings, size the pool to expected
+-attendees plus a 10 to 20 percent buffer, and trigger warm-up well ahead of
+-the session.
+-
+-Three things to watch that are specific to provisioning at lab start rather
+-than baking an image:
+-
+-- **A warm pool holds a snapshot of whatever `WORKSHOP_REF` pointed at when it
+-  was warmed.** Push an exercise fix after warm-up and pooled sandboxes keep
+-  serving the old clone. Re-warm the pool after any code change you need
+-  attendees to see.
+-- **The dev server in a pooled sandbox has been running since warm-up.** It is
+-  a SQLite dev server with no data that matters, so this is fine, but any
+-  workflow you start while validating a pooled sandbox is visible to whoever
+-  gets handed that sandbox.
+-- **Disable Hot Start after the session.** Pre-provisioned sandboxes cost money
+-  while idle.
+-
+-### Where a dependency belongs
+-
+-The base image supplies only what the **clone** needs, because the track script
+-runs before `sandbox/setup-workshop` exists on disk. `python:3.11` was picked
+-for exactly that: `git`, `curl`, `unzip`, `gcc` with build headers,
+-`update-ca-certificates`, and a 3.11 interpreter that matches
+-`.python-version`.
+-
+-Everything else goes in step 1 of `sandbox/setup-workshop`. Dropping the
+-interpreter download and the `python3`/`build-essential` apt install took
+-provisioning from a few minutes to about 30 seconds.
+-
+-`instruqt/sandbox/README.md` has the decision table and how to vet a
+-replacement base image.
+-
+-### Two things that are easy to break
+-
+-**Toolchain on the default PATH.** `uv` and `temporal` are installed to
+-`/usr/local/bin` on purpose. Check and solve scripts run non-interactively and
+-never source a profile, so anything reachable only via `PATH` export in a
+-profile is invisible to them.
+-
+-**Proxy and cert variables.** They live in `/etc/profile.d/workshop.sh`, with
+-`/etc/bash.bashrc` sourcing it for interactive non-login shells, which is what
+-Instruqt's terminal tabs open. Putting them only in `/etc/bash.bashrc` does
+-not work: Ubuntu's `/root/.bashrc` returns early for non-interactive shells.
+-The symptom is subtle, because the toggles appear to do nothing when traffic
+-never reaches the proxy.
+-
+-**Search attributes.** The dev server starts with
+-`--search-attribute AccountId=Text`, which exercise 4 needs. Without that flag
+-the `upsert_search_attributes` call fails the Workflow Task, and the Workflow
+-just stops making progress.
+-
+-## Network control panel
+-
+-Ported from [temporal-sa/ai-agents-webinar](https://github.com/temporal-sa/ai-agents-webinar).
+-mitmproxy listens on `127.0.0.1:8888`, every shell routes outbound HTTP and
+-HTTPS through it, and a Flask panel on port 5000 flips toggles by writing
+-`state.json`. The addon re-reads that file on every request, so a toggle takes
+-effect immediately with no restart.
+-
+-| Toggle | Hosts | Effect when off |
+-|--------|-------|-----------------|
+-| `pypi` | `pypi.org`, `files.pythonhosted.org` | `uv` cannot reach the package index |
+-| `github` | `github.com`, `raw.githubusercontent.com`, `codeload.github.com` | Git and release downloads fail |
+-| `httpbin` | `httpbin.org` | A request-echo endpoint for proving the proxy is in the path |
+-| Kill switch | everything | HTTP 503 on all outbound traffic |
+-
+-`NO_PROXY=127.0.0.1,localhost` keeps the Temporal SDK's gRPC traffic and the
+-dev server's own HTTP off the proxy, so flipping the kill switch never breaks
+-the lab itself.
+-
+-These eight exercises call no external HTTP APIs of their own. Their Activities
+-simulate failure locally, so the toggles do not disrupt any Workflow as
+-shipped. The panel is wired and ready for a chapter that does hit a real API,
+-and it makes a usable instructor demo as-is: flip `pypi` off, run `uv sync`,
+-watch it fail, flip it back.
+ 
+-To add a toggle: add the key and its hostnames to `SERVICE_HOSTS` in
+-`toggle_addon.py`, add the key to `state.json`, and add a display label to
+-`SERVICE_LABELS` in `controlpanel.py`. The UI renders itself from
+-`SERVICE_LABELS`, so there is no HTML to edit.
+-
+-## Tabs
+-
+-Every challenge has the same six tabs, in the same order, so the `tab-N`
+-references in the assignment bodies stay stable. Tab indexing is 0-based.
+-
+-| Index | Tab | Type | Points at |
+-|-------|-----|------|-----------|
+-| `tab-0` | Code Editor | `code` | `/root/workshop/exerciseN` |
+-| `tab-1` | Worker | `terminal` | `/root/workshop` |
+-| `tab-2` | Terminal | `terminal` | `/root/workshop` |
+-| `tab-3` | Temporal UI | `service` | port 8233 |
+-| `tab-4` | Solution | `code` | `/root/workshop/solutionN` |
+-| `tab-5` | Network Control Panel | `service` | port 5000 |
+-
+-Challenge 07 adds a seventh tab, **Signals** (`tab-6`), because its starter
+-blocks in `tab-2` while the attendee sends the retry Signal.
+-
+-Terminals sit at `/root/workshop` because the exercises are one `uv` project
+-rooted there and every command runs as `uv run exerciseN/...` from the root.
+-
+-Every port a tab points at has to be listed under `ports:` in `config.yml`.
+-Instruqt's proxy returns HTTP 572 for anything not listed.
+-
+-## Challenge map
+-
+-All eight are fill-in-the-blanks: the attendee edits code, and the check script
+-gates on the TODOs being gone plus a real outcome in Temporal.
+-
+-| Challenge | Exercise | Checks |
+-|-----------|----------|--------|
+-| `01-hello-temporal` | 1 | TODOs gone, Workflow completed on `hello-task-queue` |
+-| `02-signals` | 2 | TODOs gone, `@workflow.signal` present, transfer completed |
+-| `03-queries` | 3 | TODOs gone, `@workflow.query` present, transfer completed |
+-| `04-search-attributes` | 4 | `upsert_search_attributes` called, execution findable by `AccountId` |
+-| `05-activity-summaries` | 5 | All three Activities carry `summary=`, transfer completed |
+-| `06-unit-testing` | 6 | TODOs gone, `pytest exercise6/` passes (7 tests) |
+-| `07-manual-retry` | 7 | `non_retryable` raised, retry loop waits on a Signal, transfer completed |
+-| `08-versioning` | 8 | `workflow.patched()` gates the new Activity, both tests pass including replay |
+-
+-Solve scripts copy the matching `solutionN/` files into `exerciseN/` and then
+-drive a Workflow to completion, so `instruqt track test` exercises the whole
+-track end to end and Skip leaves the next challenge in a sane state.
+-
+-## Publishing the track
+-
+-All track commands run from `instruqt/track/`. Authenticate once with
+-`instruqt auth login`.
++> [!IMPORTANT]
++> The third row is the one that catches people. Exercise code and the proxy
++> files are part of neither push. They reach the sandbox through the
++> `git clone` that `sandbox/scripts/setup-workshop` runs at provision time, so
++> an edit is live only once it is pushed to the ref `WORKSHOP_REF` names
++> (default `main`). Pushing the track ten times will not pick it up.
+ 
+-A push targets an **existing** track, so the slug has to be registered first.
+-Do that once, ever, from a throwaway directory so the upstream scaffold does
+-not overwrite the files here:
++Authenticate once with `instruqt auth login`.
+ 
+-```bash
+-mkdir /tmp/scaffold && cd /tmp/scaffold
+-instruqt track create temporal-in-practice --title "Temporal in Practice"
+-cd - && rm -rf /tmp/scaffold
+-```
++## Pushing the track
+ 
+-Then the first push, which needs `--force` to reconcile the backend-only
+-fields `create` populated:
++The track already exists — `slug: temporal-in-practice-python`, with its `id:`
++committed in `track.yml` — so a push updates it in place. Run from
++`instruqt/track/`:
+ 
+ ```bash
+ cd instruqt/track
+-instruqt track push --force
+-instruqt track pull        # populates the track id and every tab id
+-cd -
+-git add instruqt/track/ && git commit -m "Pin Instruqt track and tab ids"
+-```
+-
+-Afterwards:
+-
+-```bash
+-cd instruqt/track
+-instruqt track validate    # local validation, no push
+-instruqt track push        # publish
++instruqt track validate    # local only, no push
++instruqt track push
+ instruqt track pull        # ids for any new challenge or tab, then commit
+ instruqt track test        # runs every solve script in order, end to end
+ ```
+ 
+-`instruqt track diff` is absent from some CLI versions. If it errors as an
+-unknown command, compare with `instruqt track checksum` instead.
+-
+-[.github/workflows/push-track.yml](../.github/workflows/push-track.yml)
+-validates and pushes automatically on merge to `main`. It needs a repo secret
+-named `INSTRUQT_TOKEN` holding an Instruqt org API key.
+-
+-> [!IMPORTANT]
+-> Never edit the track in the Instruqt web UI while editing locally. It
+-> corrupts the `.remote` cache. Use the CLI exclusively. A handful of settings
+-> are web-UI authoritative regardless of what you push: `idle_timeout`, Hot
+-> Start, and invite configuration.
+-
+-`instruqt track push` rewrites `track.yml` and each `assignment.md`
++`instruqt track push` rewrites `track.yml` and every `assignment.md`
+ **frontmatter** in place: comments stripped, keys reordered, block scalars
+-collapsed, `checksum` injected. The first-push diff is large and that is
+-expected. Commit it as-is rather than prettifying it, and keep durable
+-explanation in this README instead of in YAML comments. `config.yml` is left
+-alone.
++collapsed, `checksum` injected. Commit that as-is rather than prettifying it,
++and keep durable explanation in this README instead of in YAML comments.
+ 
+-## Testing the sandbox locally
++`instruqt track diff` is missing from some CLI versions; compare with
++`instruqt track checksum` instead.
+ 
+-Static validation misses runtime bugs. For any change to either setup script
+-or to a command in an assignment, boot a container and walk the affected
+-challenge. This is the only way to test `sandbox/setup-workshop` before
+-pushing it, since `instruqt track push` does not carry that file.
++> [!IMPORTANT]
++> Never edit the track in the web UI while editing locally — it corrupts the
++> `.remote` cache. Some settings are web-UI authoritative no matter what you
++> push: `idle_timeout`, Hot Start, and invite configuration.
+ 
+-Boot stock Ubuntu and provision it the way Instruqt does. The host ports are
+-offset because 7233 is usually a local dev server and 5000 is macOS AirPlay
+-Receiver. `sleep infinity` keeps stock Ubuntu alive without a TTY; Instruqt
+-supplies its own long-running command, so that is a local-only concern.
++Two things that break a push or silently reorder the lab:
+ 
+-```bash
+-docker rm -f instruqt-test 2>/dev/null
+-docker run -d --name instruqt-test --platform linux/amd64 \
+-  -p 7299:7233 -p 8299:8233 -p 5099:5000 \
+-  python:3.11 sleep infinity
++- **Every file in a challenge directory is parsed as a lifecycle script.** A
++  stray diagram next to `assignment.md` breaks the track. Shared assets belong
++  under `sandbox/` or inline in the markdown.
++- **Challenge order comes from directory sort order**, so the `NN-` prefixes
++  have to stay sequential and `track.yml` must have no `challenges:` block.
++  Lifecycle script names carry the preset's hostname (`-workshop`).
+ 
+-# Fake Instruqt's bootstrap marker, which setup-workshop waits on.
+-docker exec instruqt-test mkdir -p /opt/instruqt/bootstrap
+-docker exec instruqt-test touch /opt/instruqt/bootstrap/host-bootstrap-completed
+-```
++## Pushing the sandbox preset
+ 
+-To test your **local working tree**, seed `/root/workshop` first. The track
+-script skips its clone when that directory already exists, so it hands off to
+-your uncommitted `sandbox/setup-workshop`:
++`instruqt track validate` never looks at `sandbox/`, and a broken setup script
++fails at provision time — which, with Hot Start, means a pool of broken
++sandboxes. Test it in Docker first; `sandbox/README.md` has the container loop.
+ 
+ ```bash
+-docker exec instruqt-test mkdir -p /root/workshop
+-tar --exclude='./.git' --exclude='./.venv' --exclude='./.pytest_cache' \
+-    --exclude='__pycache__' -cf - . \
+-  | docker exec -i instruqt-test tar -xf - -C /root/workshop
++cd instruqt/sandbox
++instruqt sandbox diff        # local vs remote, covers config.yml AND scripts/
++instruqt sandbox push        # -> draft
++instruqt sandbox publish --message="What changed"
++git add instruqt/sandbox/ && git commit -m "Sandbox: <what changed>" && git push
+ ```
+ 
+-Then provision. Omit the seeding step above to test the clone path an attendee
+-actually gets, in which case `WORKSHOP_REF` has to be a pushed ref:
+-
+-```bash
+-docker cp instruqt/track/track_scripts/setup-workshop instruqt-test:/tmp/setup-workshop
+-docker exec instruqt-test chmod +x /tmp/setup-workshop
+-docker exec -e WORKSHOP_REF=main instruqt-test /tmp/setup-workshop
+-```
++`push` creates a draft; `publish` makes it live. `push` refuses with `nothing
++to push` when local and remote match (`--force` overrides), and `publish`
++refuses with `no draft to publish` when there is none.
+ 
+-Temporal UI lands on <http://localhost:8299> and the control panel on
+-<http://localhost:5099>.
++> [!WARNING]
++> `instruqt sandbox publish` moves **every track on this preset** to the newly
++> published version. There is no per-track pinning. Do not publish during a
++> live session.
+ 
+-Walk one challenge's lifecycle scripts:
++`sandbox/README.md` covers what the script provisions, where a new dependency
++belongs, the network control panel, and the sandbox logs.
+ 
+-```bash
+-CH=04-search-attributes
+-docker exec instruqt-test mkdir -p /tmp/ch
+-for s in setup check solve cleanup; do
+-  docker cp "instruqt/track/$CH/$s-workshop" "instruqt-test:/tmp/ch/$s"
+-done
+-docker exec instruqt-test chmod -R +x /tmp/ch
+-docker exec instruqt-test /tmp/ch/setup
+-docker exec instruqt-test /tmp/ch/solve
+-docker exec instruqt-test /tmp/ch/check
+-docker exec instruqt-test /tmp/ch/cleanup
+-```
++## After any change: re-warm Hot Start
+ 
+-Tear down:
++A warm pool holds sandboxes built from the preset version and `WORKSHOP_REF`
++that were current when it was warmed. They keep serving that state no matter
++what you publish or push afterwards.
+ 
+-```bash
+-docker rm -f instruqt-test
+-```
++Re-warm the pool in the web UI after any preset publish, exercise change, or
++`WORKSHOP_REF` bump. Then launch one pooled sandbox and click through a
++challenge: an upstream blip during warm-up (apt, PyPI, `temporal.download`)
++produces broken pooled sandboxes silently.
+ 
+-## Time limits
+-
+-`timelimit: 14400` (4 hours) budgets 30 minutes per coding challenge across
+-eight challenges. `idle_timeout: 3600` lets sandboxes survive a break.
+-Attendees extend in-session in 15 minute increments.
+-
+-Both are tuned for a self-paced run. A live instructor-led session usually
+-wants `feedback_recap_enabled` and `feedback_tab_enabled` set to `false`,
+-because feedback gets collected out of band.
++Hot Start is a web-UI setting with no CLI equivalent, and it is the supported
++mechanism above roughly five simultaneous starts.
+ 
+ ## Live workshop pre-flight
+ 
+-`track.yml` sets `maintenance: true`, so only owners and authors can launch it.
+-Flip it to `false` and push when the track is ready. Everything else here is a
+-web-UI or by-hand step that no push can set for you.
+-
+ - [ ] **`WORKSHOP_REF` pinned** to a tag or commit in
+-      `track/track_scripts/setup-workshop`. Without this a pool warmed at
+-      different times contains different code.
+-- [ ] **`sandbox/setup-workshop` pushed** to that ref. It is read from the
+-      clone, so an unpushed edit to it has no effect no matter how many times
+-      you push the track.
+-- [ ] **Hot Start enabled**, pool sized to expected attendees plus 10 to 20
+-      percent, warmed well ahead of the session. Required above roughly five
+-      simultaneous starts.
+-- [ ] **Pool re-warmed** after any exercise or sandbox change made since the
+-      last warm-up.
++      `sandbox/scripts/setup-workshop`. On the default `main`, pools warmed at
++      different times contain different code.
++- [ ] **Exercise and `proxy/` changes pushed** to that ref.
++- [ ] **Preset published**, if `config.yml` or `scripts/` changed.
++- [ ] **`maintenance: false`** in `track.yml`, pushed. It ships `true`, so only
++      owners and authors can launch.
++- [ ] **Hot Start enabled**, pool sized to attendees plus 10 to 20 percent,
++      warmed well ahead of the session and re-warmed after the last change.
+ - [ ] **`idle_timeout` set in the web UI** (Track, Settings, Additional
+-      Settings) to workshop length plus 20 minutes. The `track.yml` value is
+-      used at track creation and the web UI wins afterwards, so a pushed
+-      `3600` can still show as `600`.
+-- [ ] **`feedback_recap_enabled` and `feedback_tab_enabled` set to `false`**
+-      in `track.yml` if feedback is collected out of band. They are `true`
+-      today, which suits a self-paced run.
+-- [ ] **Invite configured to collect the attendee name**, if you want a
+-      readable `INSTRUQT_USER_NAME` rather than the opaque participant ID.
+-- [ ] **`instruqt track test` passes.** Runs every solve script in order and
+-      catches regressions a manual click-through misses.
+-- [ ] **`INSTRUQT_TOKEN` repo secret exists**, or CI cannot push.
+-
+-After the session:
+-
+-- [ ] **Disable Hot Start** if the pool was sized for this session only.
+-      Pre-provisioned sandboxes cost money while idle.
+-- [ ] **Reset `idle_timeout`** if you raised it and the track ships as
+-      self-paced afterwards.
+-
+-No `secrets:` are declared in `config.yml`, so there is nothing to populate
+-under Track Settings, Secrets.
+-
+-## Known issues
+-
+-Quirks of the exercise code that the track works around rather than fixes.
+-Worth cleaning up in the exercises themselves.
+-
+-- **`exercise7` mixes import styles.** `start_worker.py` and
+-  `start_workflow.py` use package-relative imports while
+-  `money_transfer_workflow.py` imports by bare name. Neither
+-  `uv run exercise7/start_worker.py` nor
+-  `uv run python -m exercise7.start_worker` works on its own. The assignment
+-  uses `PYTHONPATH=exercise7 uv run python -m exercise7.start_worker`.
+-- **`exercise8` and `solution8` tests need `PYTHONPATH`.** They import by bare
+-  name but sit in a package (`__init__.py` present), so pytest puts the repo
+-  root on `sys.path` and the imports fail. The command documented in
+-  `exercise8/README.md` fails as written. The assignment prefixes
+-  `PYTHONPATH=exercise8`.
+-- **`exercise6/README.md` references `run_tests.py`,** which exists only in
+-  `solution6/`. The assignment uses `uv run pytest exercise6/ -v`.
+-- **`exercise5/start_workflow.py` suggests `memo={"summary": ...}`** for the
+-  execution summary. `static_summary=` on `client.start_workflow` is the field
+-  the Web UI renders as the execution title, and `solution5` implements
+-  neither. The assignment tells attendees to use `static_summary=`.
+-- **Task queue names are inconsistent** across exercises:
+-  `MoneyTransferTaskQueue` in exercises 2 through 5,
+-  `money-transfer-task-queue` in `solution5`, exercise 7 and exercise 8. The
+-  check scripts accept both.
+-- **`exercise8/workflow_history_v1.json` is not in the repo.** Task 4 of that
+-  exercise asks the attendee to generate it. Both
+-  `track_scripts/setup-workshop` and the challenge's own `setup-workshop` seed
+-  it from `solution8/` so the replay test runs without that detour.
+-
+-## Undocumented `track.yml` fields
+-
+-`track.yml` uses only documented fields. If you add `hideStopButton` or
+-`enhanced_loading`, note that neither appears in Instruqt's published
+-`lab_config` schema even though both work in production.
++      Settings) to workshop length plus 20 minutes. The web UI wins after track
++      creation, so a pushed `3600` can still show as `600`.
++- [ ] **`feedback_recap_enabled` and `feedback_tab_enabled` set to `false`** in
++      `track.yml` if feedback is collected out of band. Both ship `true`, which
++      suits a self-paced run.
++- [ ] **`instruqt track test` passes.** It catches regressions a manual
++      click-through misses.
++
++Afterwards, disable Hot Start if the pool was sized for this session — idle
++pre-provisioned sandboxes cost money.
++
++No `secrets:` are declared, so there is nothing to populate under Track
++Settings, Secrets.
+diff --git a/run_tests.py b/run_tests.py
+new file mode 100644
+index 0000000..e1bfcfc
+--- /dev/null
++++ b/run_tests.py
+@@ -0,0 +1,38 @@
++#!/usr/bin/env python3
++"""Run the unit tests for every solution, one pytest process per directory.
++
++Each exercise directory is self-contained and imports its modules by flat name
++(``from banking_activities import withdraw``), so a name like
++``money_transfer_workflow`` means something different in each one. A single
++pytest process would import whichever directory it reached first and hand those
++modules to the rest, so every directory gets its own process and its own
++working directory.
++"""
++
++import subprocess
++import sys
++from pathlib import Path
++
++ROOT = Path(__file__).parent
++
++
++def main() -> int:
++    directories = sorted(d for d in ROOT.glob("solution*") if any(d.glob("test_*.py")))
++    failures = []
++
++    for directory in directories:
++        print(f"\n=== {directory.name} ===", flush=True)
++        result = subprocess.run([sys.executable, "-m", "pytest", "-q"], cwd=directory)
++        if result.returncode != 0:
++            failures.append(directory.name)
++
++    if failures:
++        print(f"\nFAILED: {', '.join(failures)}")
++        return 1
++
++    print(f"\nAll tests passed in {len(directories)} solution directories.")
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/solution1/conftest.py b/solution1/conftest.py
+new file mode 100644
+index 0000000..47c83b1
+--- /dev/null
++++ b/solution1/conftest.py
+@@ -0,0 +1,26 @@
++"""Shared pytest setup for the solution1 tests.
++
++The exercise modules import each other by flat module name (for example
++``from greeting_activity import create_greeting``) so that ``start_worker.py``
++can run as a plain script. Putting this directory on ``sys.path`` lets the
++tests import them the same way regardless of where pytest is invoked from.
++"""
++
++import sys
++from pathlib import Path
++
++import pytest_asyncio
++from temporalio.testing import WorkflowEnvironment
++
++sys.path.insert(0, str(Path(__file__).parent))
++
++
++@pytest_asyncio.fixture(scope="session", loop_scope="session")
++async def env():
++    """A local Temporal server shared by every workflow test in this directory.
++
++    Starting a server takes a few seconds, so it is worth sharing. Each test
++    still gets its own task queue and workflow id so they cannot collide.
++    """
++    async with await WorkflowEnvironment.start_local() as environment:
++        yield environment
+diff --git a/solution1/test_greeting_activity.py b/solution1/test_greeting_activity.py
+new file mode 100644
+index 0000000..eb574e5
+--- /dev/null
++++ b/solution1/test_greeting_activity.py
+@@ -0,0 +1,19 @@
++import pytest
++from temporalio.testing import ActivityEnvironment
++
++from greeting_activity import create_greeting
++
++
++@pytest.mark.asyncio
++async def test_create_greeting():
++    """ActivityEnvironment runs an activity on its own, with no server."""
++    result = await ActivityEnvironment().run(create_greeting, "Temporal")
++
++    assert result == "Hello, Temporal!"
++
++
++@pytest.mark.asyncio
++async def test_create_greeting_uses_the_name_it_is_given():
++    result = await ActivityEnvironment().run(create_greeting, "Alice")
++
++    assert result == "Hello, Alice!"
+diff --git a/solution1/test_greeting_workflow.py b/solution1/test_greeting_workflow.py
+new file mode 100644
+index 0000000..e9ce234
+--- /dev/null
++++ b/solution1/test_greeting_workflow.py
+@@ -0,0 +1,55 @@
++import uuid
++
++import pytest
++from temporalio import activity
++from temporalio.worker import Worker
++
++from greeting_activity import create_greeting
++from greeting_workflow import GreetingWorkflow
++
++
++@activity.defn(name="create_greeting")
++async def create_greeting_stub(name: str) -> str:
++    """Stand-in for the real activity, registered under the same activity name."""
++    return f"Stubbed greeting for {name}"
++
++
++@pytest.mark.asyncio(loop_scope="session")
++async def test_greet_returns_the_activity_result(env):
++    task_queue = str(uuid.uuid4())
++
++    async with Worker(
++        env.client,
++        task_queue=task_queue,
++        workflows=[GreetingWorkflow],
++        activities=[create_greeting],
++    ):
++        result = await env.client.execute_workflow(
++            GreetingWorkflow.greet,
++            "Temporal",
++            id=str(uuid.uuid4()),
++            task_queue=task_queue,
++        )
++
++    assert result == "Hello, Temporal!"
++
++
++@pytest.mark.asyncio(loop_scope="session")
++async def test_greet_delegates_to_the_activity(env):
++    """Swapping the activity for a stub shows the workflow does no formatting itself."""
++    task_queue = str(uuid.uuid4())
++
++    async with Worker(
++        env.client,
++        task_queue=task_queue,
++        workflows=[GreetingWorkflow],
++        activities=[create_greeting_stub],
++    ):
++        result = await env.client.execute_workflow(
++            GreetingWorkflow.greet,
++            "Temporal",
++            id=str(uuid.uuid4()),
++            task_queue=task_queue,
++        )
++
++    assert result == "Stubbed greeting for Temporal"
+diff --git a/solution2/conftest.py b/solution2/conftest.py
+new file mode 100644
+index 0000000..c57a18d
+--- /dev/null
++++ b/solution2/conftest.py
+@@ -0,0 +1,26 @@
++"""Shared pytest setup for the solution2 tests.
++
++The exercise modules import each other by flat module name (for example
++``from banking_activities import withdraw``) so that ``start_worker.py`` can
++run as a plain script. Putting this directory on ``sys.path`` lets the tests
++import them the same way regardless of where pytest is invoked from.
++"""
++
++import sys
++from pathlib import Path
++
++import pytest_asyncio
++from temporalio.testing import WorkflowEnvironment
++
++sys.path.insert(0, str(Path(__file__).parent))
++
++
++@pytest_asyncio.fixture(scope="session", loop_scope="session")
++async def env():
++    """A local Temporal server shared by every workflow test in this directory.
++
++    Starting a server takes a few seconds, so it is worth sharing. Each test
++    still gets its own task queue and workflow id so they cannot collide.
++    """
++    async with await WorkflowEnvironment.start_local() as environment:
++        yield environment
+diff --git a/solution2/test_banking_activities.py b/solution2/test_banking_activities.py
+new file mode 100644
+index 0000000..9e4bfe3
+--- /dev/null
++++ b/solution2/test_banking_activities.py
+@@ -0,0 +1,40 @@
++from unittest.mock import patch
++
++import pytest
++from temporalio.testing import ActivityEnvironment
++
++from banking_activities import deposit, refund, withdraw
++
++
++@pytest.mark.asyncio
++async def test_withdraw_succeeds_when_the_dice_are_kind():
++    # random.random() >= 0.1, so the simulated failure does not trigger.
++    with patch("random.random", return_value=0.5):
++        await ActivityEnvironment().run(withdraw, "account-123", 100.0)
++
++
++@pytest.mark.asyncio
++async def test_withdraw_raises_on_insufficient_funds():
++    with patch("random.random", return_value=0.05):
++        with pytest.raises(RuntimeError, match="insufficient funds"):
++            await ActivityEnvironment().run(withdraw, "account-123", 100.0)
++
++
++@pytest.mark.asyncio
++async def test_deposit_succeeds_when_the_dice_are_kind():
++    with patch("random.random", return_value=0.5):
++        await ActivityEnvironment().run(deposit, "account-456", 100.0)
++
++
++@pytest.mark.asyncio
++async def test_deposit_raises_when_the_account_is_missing():
++    with patch("random.random", return_value=0.01):
++        with pytest.raises(RuntimeError, match="account not found"):
++            await ActivityEnvironment().run(deposit, "account-456", 100.0)
++
++
++@pytest.mark.asyncio
++async def test_refund_never_fails():
++    """The compensating activity has no simulated failure, by design."""
++    with patch("random.random", return_value=0.0):
++        await ActivityEnvironment().run(refund, "account-123", 100.0)
+diff --git a/solution2/test_money_transfer_workflow.py b/solution2/test_money_transfer_workflow.py
+new file mode 100644
+index 0000000..4334a10
+--- /dev/null
++++ b/solution2/test_money_transfer_workflow.py
+@@ -0,0 +1,147 @@
++import asyncio
++import time
++import uuid
++
++import pytest
++from temporalio import activity
++from temporalio.client import WorkflowExecutionStatus
++from temporalio.worker import Worker
++
++from money_transfer_workflow import MoneyTransferWorkflow
++from transfer_request import TransferRequest
++
++# The real activities fail at random, which is useful in a demo and useless in
++# a test. These stubs are registered under the same activity names, so the
++# workflow code under test is unchanged, and they record what was called.
++calls: list[tuple[str, str, float]] = []
++
++
++@activity.defn(name="withdraw")
++async def withdraw_stub(account: str, amount: float) -> None:
++    calls.append(("withdraw", account, amount))
++
++
++@activity.defn(name="deposit")
++async def deposit_stub(account: str, amount: float) -> None:
++    calls.append(("deposit", account, amount))
++
++
++@activity.defn(name="refund")
++async def refund_stub(account: str, amount: float) -> None:
++    calls.append(("refund", account, amount))
++
++
++ACTIVITY_STUBS = [withdraw_stub, deposit_stub, refund_stub]
++
++
++@pytest.fixture(autouse=True)
++def clear_calls():
++    calls.clear()
++
++
++def transfer_request() -> TransferRequest:
++    return TransferRequest(
++        from_account="account-123",
++        to_account="account-456",
++        amount=100.0,
++        transfer_id=str(uuid.uuid4()),
++    )
++
++
++async def wait_until(predicate, description: str, timeout: float = 10.0) -> None:
++    """Poll until `predicate` holds, so tests never depend on sleep lengths."""
++    deadline = time.monotonic() + timeout
++    while not predicate():
++        assert time.monotonic() < deadline, f"timed out waiting for {description}"
++        await asyncio.sleep(0.05)
++
++
++@pytest.mark.asyncio(loop_scope="session")
++async def test_approved_transfer_deposits_into_the_target_account(env):
++    task_queue = str(uuid.uuid4())
++    request = transfer_request()
++
++    async with Worker(
++        env.client,
++        task_queue=task_queue,
++        workflows=[MoneyTransferWorkflow],
++        activities=ACTIVITY_STUBS,
++    ):
++        handle = await env.client.start_workflow(
++            MoneyTransferWorkflow.transfer,
++            request,
++            id=str(uuid.uuid4()),
++            task_queue=task_queue,
++        )
++
++        # The workflow withdraws first, then blocks on wait_condition.
++        await wait_until(lambda: calls, "the withdrawal")
++        assert calls == [("withdraw", request.from_account, request.amount)]
++        assert (await handle.describe()).status == WorkflowExecutionStatus.RUNNING
++
++        await handle.signal(MoneyTransferWorkflow.approve, True)
++        result = await handle.result()
++
++    assert result == "Transfer completed successfully"
++    assert calls == [
++        ("withdraw", request.from_account, request.amount),
++        ("deposit", request.to_account, request.amount),
++    ]
++
++
++@pytest.mark.asyncio(loop_scope="session")
++async def test_rejected_transfer_refunds_the_source_account(env):
++    task_queue = str(uuid.uuid4())
++    request = transfer_request()
++
++    async with Worker(
++        env.client,
++        task_queue=task_queue,
++        workflows=[MoneyTransferWorkflow],
++        activities=ACTIVITY_STUBS,
++    ):
++        handle = await env.client.start_workflow(
++            MoneyTransferWorkflow.transfer,
++            request,
++            id=str(uuid.uuid4()),
++            task_queue=task_queue,
++        )
++
++        await handle.signal(MoneyTransferWorkflow.approve, False)
++        result = await handle.result()
++
++    assert result == "Transfer rejected and refunded"
++    assert calls == [
++        ("withdraw", request.from_account, request.amount),
++        ("refund", request.from_account, request.amount),
++    ]
++
++
++@pytest.mark.asyncio(loop_scope="session")
++async def test_signal_sent_before_the_wait_is_not_lost(env):
++    """A signal that arrives while the withdrawal is still running is buffered.
++
++    The workflow only reaches `wait_condition` after the withdrawal completes,
++    yet signalling immediately after start still approves the transfer.
++    """
++    task_queue = str(uuid.uuid4())
++    request = transfer_request()
++
++    handle = await env.client.start_workflow(
++        MoneyTransferWorkflow.transfer,
++        request,
++        id=str(uuid.uuid4()),
++        task_queue=task_queue,
++    )
++    await handle.signal(MoneyTransferWorkflow.approve, True)
++
++    # Only now does a worker pick the workflow up, with the signal already queued.
++    async with Worker(
++        env.client,
++        task_queue=task_queue,
++        workflows=[MoneyTransferWorkflow],
++        activities=ACTIVITY_STUBS,
++    ):
++        result = await handle.result()
++
++    assert result == "Transfer completed successfully"
+diff --git a/solution3/conftest.py b/solution3/conftest.py
+new file mode 100644
+index 0000000..844a86b
+--- /dev/null
++++ b/solution3/conftest.py
+@@ -0,0 +1,26 @@
++"""Shared pytest setup for the solution3 tests.
++
++The exercise modules import each other by flat module name (for example
++``from banking_activities import withdraw``) so that ``start_worker.py`` can
++run as a plain script. Putting this directory on ``sys.path`` lets the tests
++import them the same way regardless of where pytest is invoked from.
++"""
++
++import sys
++from pathlib import Path
++
++import pytest_asyncio
++from temporalio.testing import WorkflowEnvironment
++
++sys.path.insert(0, str(Path(__file__).parent))
++
++
++@pytest_asyncio.fixture(scope="session", loop_scope="session")
++async def env():
++    """A local Temporal server shared by every workflow test in this directory.
++
++    Starting a server takes a few seconds, so it is worth sharing. Each test
++    still gets its own task queue and workflow id so they cannot collide.
++    """
++    async with await WorkflowEnvironment.start_local() as environment:
++        yield environment
+diff --git a/solution3/test_money_transfer_workflow.py b/solution3/test_money_transfer_workflow.py
+new file mode 100644
+index 0000000..cdabbc8
+--- /dev/null
++++ b/solution3/test_money_transfer_workflow.py
+@@ -0,0 +1,144 @@
++import asyncio
++import time
++import uuid
++
++import pytest
++from temporalio import activity
++from temporalio.worker import Worker
++
++from money_transfer_workflow import MoneyTransferWorkflow
++from transfer_request import TransferRequest
++
++# Stubs registered under the real activity names, so the workflow under test is
++# unchanged but never hits the random failures the demo activities simulate.
++
++
++@activity.defn(name="withdraw")
++async def withdraw_stub(account: str, amount: float) -> None:
++    pass
++
++
++@activity.defn(name="deposit")
++async def deposit_stub(account: str, amount: float) -> None:
++    pass
++
++
++@activity.defn(name="refund")
++async def refund_stub(account: str, amount: float) -> None:
++    pass
++
++
++ACTIVITY_STUBS = [withdraw_stub, deposit_stub, refund_stub]
++
++
++def transfer_request() -> TransferRequest:
++    return TransferRequest(
++        from_account="account-123",
++        to_account="account-456",
++        amount=100.0,
++        transfer_id=str(uuid.uuid4()),
++    )
++
++
++async def wait_for_step(handle, step: str, timeout: float = 10.0) -> None:
++    """Poll the query handler until the workflow reports the expected step."""
++    deadline = time.monotonic() + timeout
++    while await handle.query(MoneyTransferWorkflow.get_current_step) != step:
++        assert time.monotonic() < deadline, f"timed out waiting for step {step}"
++        await asyncio.sleep(0.05)
++
++
++@pytest.mark.asyncio(loop_scope="session")
++async def test_queries_report_progress_of_an_approved_transfer(env):
++    task_queue = str(uuid.uuid4())
++
++    async with Worker(
++        env.client,
++        task_queue=task_queue,
++        workflows=[MoneyTransferWorkflow],
++        activities=ACTIVITY_STUBS,
++    ):
++        handle = await env.client.start_workflow(
++            MoneyTransferWorkflow.transfer,
++            transfer_request(),
++            id=str(uuid.uuid4()),
++            task_queue=task_queue,
++        )
++
++        await wait_for_step(handle, "WAITING_FOR_APPROVAL")
++        assert await handle.query(MoneyTransferWorkflow.get_transfer_state) == "IN_PROGRESS"
++        # No approval yet, so the workflow reports "unknown" rather than False.
++        assert await handle.query(MoneyTransferWorkflow.is_approved) is None
++
++        await handle.signal(MoneyTransferWorkflow.approve, True)
++        result = await handle.result()
++
++        assert result == "Transfer completed successfully"
++        # Queries still work once the workflow has closed.
++        assert await handle.query(MoneyTransferWorkflow.get_transfer_state) == "COMPLETED"
++        assert await handle.query(MoneyTransferWorkflow.get_current_step) == "COMPLETED"
++        assert await handle.query(MoneyTransferWorkflow.is_approved) is True
++
++
++@pytest.mark.asyncio(loop_scope="session")
++async def test_queries_report_progress_of_a_rejected_transfer(env):
++    task_queue = str(uuid.uuid4())
++
++    async with Worker(
++        env.client,
++        task_queue=task_queue,
++        workflows=[MoneyTransferWorkflow],
++        activities=ACTIVITY_STUBS,
++    ):
++        handle = await env.client.start_workflow(
++            MoneyTransferWorkflow.transfer,
++            transfer_request(),
++            id=str(uuid.uuid4()),
++            task_queue=task_queue,
++        )
++
++        await wait_for_step(handle, "WAITING_FOR_APPROVAL")
++        await handle.signal(MoneyTransferWorkflow.approve, False)
++        result = await handle.result()
++
++        assert result == "Transfer rejected and refunded"
++        assert await handle.query(MoneyTransferWorkflow.get_transfer_state) == "REJECTED"
++        assert await handle.query(MoneyTransferWorkflow.get_current_step) == "REFUNDED"
++        assert await handle.query(MoneyTransferWorkflow.is_approved) is False
++
++
++@pytest.mark.asyncio(loop_scope="session")
++async def test_query_observes_the_deposit_in_flight(env):
++    """Hold the deposit open so the intermediate step is observable."""
++    deposit_started = asyncio.Event()
++    let_deposit_finish = asyncio.Event()
++
++    @activity.defn(name="deposit")
++    async def blocking_deposit(account: str, amount: float) -> None:
++        deposit_started.set()
++        await let_deposit_finish.wait()
++
++    task_queue = str(uuid.uuid4())
++
++    async with Worker(
++        env.client,
++        task_queue=task_queue,
++        workflows=[MoneyTransferWorkflow],
++        activities=[withdraw_stub, blocking_deposit, refund_stub],
++    ):
++        handle = await env.client.start_workflow(
++            MoneyTransferWorkflow.transfer,
++            transfer_request(),
++            id=str(uuid.uuid4()),
++            task_queue=task_queue,
++        )
++
++        await wait_for_step(handle, "WAITING_FOR_APPROVAL")
++        await handle.signal(MoneyTransferWorkflow.approve, True)
++
++        await asyncio.wait_for(deposit_started.wait(), timeout=10)
++        assert await handle.query(MoneyTransferWorkflow.get_current_step) == "DEPOSITING"
++        assert await handle.query(MoneyTransferWorkflow.get_transfer_state) == "IN_PROGRESS"
++
++        let_deposit_finish.set()
++        assert await handle.result() == "Transfer completed successfully"
+diff --git a/solution4/conftest.py b/solution4/conftest.py
+new file mode 100644
+index 0000000..15dfa20
+--- /dev/null
++++ b/solution4/conftest.py
+@@ -0,0 +1,35 @@
++"""Shared pytest setup for the solution4 tests.
++
++The exercise modules import each other by flat module name (for example
++``from banking_activities import withdraw``) so that ``start_worker.py`` can
++run as a plain script. Putting this directory on ``sys.path`` lets the tests
++import them the same way regardless of where pytest is invoked from.
++"""
++
++import sys
++from pathlib import Path
++
++import pytest_asyncio
++from temporalio.common import SearchAttributeKey
++from temporalio.testing import WorkflowEnvironment
++
++sys.path.insert(0, str(Path(__file__).parent))
++
++# Matches the attribute name the workflow upserts.
++ACCOUNT_ID = SearchAttributeKey.for_keyword("AccountId")
++
++
++@pytest_asyncio.fixture(scope="session", loop_scope="session")
++async def env():
++    """A local Temporal server shared by every workflow test in this directory.
++
++    Starting a server takes a few seconds, so it is worth sharing. Each test
++    still gets its own task queue and workflow id so they cannot collide.
++    """
++    # The workflow upserts AccountId, so the attribute has to exist on the
++    # server before a workflow can set it. A real deployment registers it once
++    # with `temporal operator search-attribute create`.
++    async with await WorkflowEnvironment.start_local(
++        search_attributes=[ACCOUNT_ID],
++    ) as environment:
++        yield environment
+diff --git a/solution4/test_money_transfer_workflow.py b/solution4/test_money_transfer_workflow.py
+new file mode 100644
+index 0000000..a691503
+--- /dev/null
++++ b/solution4/test_money_transfer_workflow.py
+@@ -0,0 +1,120 @@
++import asyncio
++import time
++import uuid
++
++import pytest
++from temporalio import activity
++from temporalio.common import SearchAttributeKey
++from temporalio.worker import Worker
++
++from money_transfer_workflow import MoneyTransferWorkflow
++from transfer_request import TransferRequest
++
++# The same attribute the workflow upserts; conftest registers it on the server.
++ACCOUNT_ID = SearchAttributeKey.for_keyword("AccountId")
++
++
++@activity.defn(name="withdraw")
++async def withdraw_stub(account: str, amount: float) -> None:
++    pass
++
++
++@activity.defn(name="deposit")
++async def deposit_stub(account: str, amount: float) -> None:
++    pass
++
++
++@activity.defn(name="refund")
++async def refund_stub(account: str, amount: float) -> None:
++    pass
++
++
++ACTIVITY_STUBS = [withdraw_stub, deposit_stub, refund_stub]
++
++
++def transfer_request(from_account: str) -> TransferRequest:
++    return TransferRequest(
++        from_account=from_account,
++        to_account="account-456",
++        amount=100.0,
++        transfer_id=str(uuid.uuid4()),
++    )
++
++
++async def run_transfer(env, task_queue: str, from_account: str) -> str:
++    """Start a transfer, approve it, and return the workflow id."""
++    handle = await env.client.start_workflow(
++        MoneyTransferWorkflow.transfer,
++        transfer_request(from_account),
++        id=str(uuid.uuid4()),
++        task_queue=task_queue,
++    )
++    await handle.signal(MoneyTransferWorkflow.approve, True)
++    assert await handle.result() == "Transfer completed successfully"
++    return handle.id
++
++
++async def wait_for_ids(env, query: str, expected: set[str], timeout: float = 10.0):
++    """Visibility is eventually consistent, so poll until the index catches up."""
++    deadline = time.monotonic() + timeout
++    while True:
++        found = {wf.id async for wf in env.client.list_workflows(query)}
++        if expected <= found:
++            return found
++        assert time.monotonic() < deadline, f"timed out waiting for {query}"
++        await asyncio.sleep(0.1)
++
++
++@pytest.mark.asyncio(loop_scope="session")
++async def test_transfer_tags_itself_with_the_source_account(env):
++    task_queue = str(uuid.uuid4())
++
++    async with Worker(
++        env.client,
++        task_queue=task_queue,
++        workflows=[MoneyTransferWorkflow],
++        activities=ACTIVITY_STUBS,
++    ):
++        handle = await env.client.start_workflow(
++            MoneyTransferWorkflow.transfer,
++            transfer_request("account-123"),
++            id=str(uuid.uuid4()),
++            task_queue=task_queue,
++        )
++
++        # The attribute is set before the first activity, so it is visible on a
++        # running workflow rather than only on a completed one.
++        await wait_for_ids(env, 'AccountId = "account-123"', {handle.id})
++
++        description = await handle.describe()
++        assert description.typed_search_attributes[ACCOUNT_ID] == "account-123"
++
++        await handle.signal(MoneyTransferWorkflow.approve, True)
++        assert await handle.result() == "Transfer completed successfully"
++
++
++@pytest.mark.asyncio(loop_scope="session")
++async def test_workflows_are_filterable_by_account(env):
++    """The point of the search attribute: find one account's transfers only."""
++    task_queue = str(uuid.uuid4())
++    account_a = f"account-{uuid.uuid4()}"
++    account_b = f"account-{uuid.uuid4()}"
++
++    async with Worker(
++        env.client,
++        task_queue=task_queue,
++        workflows=[MoneyTransferWorkflow],
++        activities=ACTIVITY_STUBS,
++    ):
++        first_a = await run_transfer(env, task_queue, account_a)
++        second_a = await run_transfer(env, task_queue, account_a)
++        only_b = await run_transfer(env, task_queue, account_b)
++
++    matches_a = await wait_for_ids(
++        env, f'AccountId = "{account_a}"', {first_a, second_a}
++    )
++    assert matches_a == {first_a, second_a}
++    assert only_b not in matches_a
++
++    matches_b = await wait_for_ids(env, f'AccountId = "{account_b}"', {only_b})
++    assert matches_b == {only_b}
+diff --git a/solution5/conftest.py b/solution5/conftest.py
+new file mode 100644
+index 0000000..c279a61
+--- /dev/null
++++ b/solution5/conftest.py
+@@ -0,0 +1,26 @@
++"""Shared pytest setup for the solution5 tests.
++
++The exercise modules import each other by flat module name (for example
++``from banking_activities import withdraw``) so that ``start_worker.py`` can
++run as a plain script. Putting this directory on ``sys.path`` lets the tests
++import them the same way regardless of where pytest is invoked from.
++"""
++
++import sys
++from pathlib import Path
++
++import pytest_asyncio
++from temporalio.testing import WorkflowEnvironment
++
++sys.path.insert(0, str(Path(__file__).parent))
++
++
++@pytest_asyncio.fixture(scope="session", loop_scope="session")
++async def env():
++    """A local Temporal server shared by every workflow test in this directory.
++
++    Starting a server takes a few seconds, so it is worth sharing. Each test
++    still gets its own task queue and workflow id so they cannot collide.
++    """
++    async with await WorkflowEnvironment.start_local() as environment:
++        yield environment
+diff --git a/solution5/test_money_transfer_workflow.py b/solution5/test_money_transfer_workflow.py
+new file mode 100644
+index 0000000..6403689
+--- /dev/null
++++ b/solution5/test_money_transfer_workflow.py
+@@ -0,0 +1,132 @@
++import uuid
++
++import pytest
++from temporalio import activity
++from temporalio.api.enums.v1 import EventType
++from temporalio.client import Client, WorkflowHandle
++from temporalio.worker import Worker
++
++from money_transfer_workflow import MoneyTransferWorkflow
++from transfer_request import TransferRequest
++
++FROM_ACCOUNT = "account-123"
++TO_ACCOUNT = "account-456"
++
++
++@activity.defn(name="withdraw")
++async def withdraw_stub(account: str, amount: float) -> None:
++    pass
++
++
++@activity.defn(name="deposit")
++async def deposit_stub(account: str, amount: float) -> None:
++    pass
++
++
++@activity.defn(name="refund")
++async def refund_stub(account: str, amount: float) -> None:
++    pass
++
++
++ACTIVITY_STUBS = [withdraw_stub, deposit_stub, refund_stub]
++
++
++def transfer_request() -> TransferRequest:
++    return TransferRequest(
++        from_account=FROM_ACCOUNT,
++        to_account=TO_ACCOUNT,
++        amount=100.0,
++        transfer_id=str(uuid.uuid4()),
++    )
++
++
++async def activity_summaries(client: Client, handle: WorkflowHandle) -> list[str]:
++    """The summaries the Web UI shows, read straight out of event history.
++
++    A summary rides along on the ActivityTaskScheduled event as user metadata,
++    so asserting on it needs the history rather than the workflow result.
++    """
++    converter = client.data_converter.payload_converter
++    history = await handle.fetch_history()
++    return [
++        converter.from_payload(event.user_metadata.summary, str)
++        for event in history.events
++        if event.event_type == EventType.EVENT_TYPE_ACTIVITY_TASK_SCHEDULED
++        and event.HasField("user_metadata")
++        and event.user_metadata.HasField("summary")
++    ]
++
++
++@pytest.mark.asyncio(loop_scope="session")
++async def test_approved_transfer_summarizes_withdrawal_and_deposit(env):
++    task_queue = str(uuid.uuid4())
++
++    async with Worker(
++        env.client,
++        task_queue=task_queue,
++        workflows=[MoneyTransferWorkflow],
++        activities=ACTIVITY_STUBS,
++    ):
++        handle = await env.client.start_workflow(
++            MoneyTransferWorkflow.transfer,
++            transfer_request(),
++            id=str(uuid.uuid4()),
++            task_queue=task_queue,
++        )
++        await handle.signal(MoneyTransferWorkflow.approve, True)
++
++        assert await handle.result() == "Transfer completed successfully"
++        assert await activity_summaries(env.client, handle) == [
++            f"Withdrawing funds from account {FROM_ACCOUNT}",
++            f"Depositing funds to account {TO_ACCOUNT}",
++        ]
++
++
++@pytest.mark.asyncio(loop_scope="session")
++async def test_rejected_transfer_summarizes_the_refund(env):
++    task_queue = str(uuid.uuid4())
++
++    async with Worker(
++        env.client,
++        task_queue=task_queue,
++        workflows=[MoneyTransferWorkflow],
++        activities=ACTIVITY_STUBS,
++    ):
++        handle = await env.client.start_workflow(
++            MoneyTransferWorkflow.transfer,
++            transfer_request(),
++            id=str(uuid.uuid4()),
++            task_queue=task_queue,
++        )
++        await handle.signal(MoneyTransferWorkflow.approve, False)
++
++        assert await handle.result() == "Transfer rejected and refunded"
++        assert await activity_summaries(env.client, handle) == [
++            f"Withdrawing funds from account {FROM_ACCOUNT}",
++            f"Refunding funds to account {FROM_ACCOUNT}",
++        ]
++
++
++@pytest.mark.asyncio(loop_scope="session")
++async def test_summaries_do_not_change_the_workflow_behaviour(env):
++    """Summaries are metadata only: queries still report the same states."""
++    task_queue = str(uuid.uuid4())
++
++    async with Worker(
++        env.client,
++        task_queue=task_queue,
++        workflows=[MoneyTransferWorkflow],
++        activities=ACTIVITY_STUBS,
++    ):
++        handle = await env.client.start_workflow(
++            MoneyTransferWorkflow.transfer,
++            transfer_request(),
++            id=str(uuid.uuid4()),
++            task_queue=task_queue,
++        )
++        await handle.signal(MoneyTransferWorkflow.approve, True)
++        await handle.result()
++
++        assert await handle.query(MoneyTransferWorkflow.get_transfer_state) == "COMPLETED"
++        assert await handle.query(MoneyTransferWorkflow.get_current_step) == "COMPLETED"
++        assert await handle.query(MoneyTransferWorkflow.is_approved) is True
+diff --git a/solution7/conftest.py b/solution7/conftest.py
+new file mode 100644
+index 0000000..ef5beda
+--- /dev/null
++++ b/solution7/conftest.py
+@@ -0,0 +1,26 @@
++"""Shared pytest setup for the solution7 tests.
++
++The exercise modules import each other by flat module name (for example
++``from banking_activities import withdraw``) so that ``start_worker.py`` can
++run as a plain script. Putting this directory on ``sys.path`` lets the tests
++import them the same way regardless of where pytest is invoked from.
++"""
++
++import sys
++from pathlib import Path
++
++import pytest_asyncio
++from temporalio.testing import WorkflowEnvironment
++
++sys.path.insert(0, str(Path(__file__).parent))
++
++
++@pytest_asyncio.fixture(scope="session", loop_scope="session")
++async def env():
++    """A local Temporal server shared by every workflow test in this directory.
++
++    Starting a server takes a few seconds, so it is worth sharing. Each test
++    still gets its own task queue and workflow id so they cannot collide.
++    """
++    async with await WorkflowEnvironment.start_local() as environment:
++        yield environment
+diff --git a/solution7/test_banking_activities.py b/solution7/test_banking_activities.py
+new file mode 100644
+index 0000000..491b872
+--- /dev/null
++++ b/solution7/test_banking_activities.py
+@@ -0,0 +1,47 @@
++import pytest
++from temporalio.exceptions import ApplicationError
++from temporalio.testing import ActivityEnvironment
++
++from banking_activities import deposit, refund, withdraw
++
++
++@pytest.mark.asyncio
++async def test_withdraw_succeeds_for_a_valid_account():
++    result = await ActivityEnvironment().run(withdraw, "account-123", 100.0)
++
++    assert result == "Withdrew $100.0 from account-123"
++
++
++@pytest.mark.asyncio
++async def test_withdraw_rejects_an_invalid_account_without_retrying():
++    with pytest.raises(ApplicationError) as caught:
++        await ActivityEnvironment().run(withdraw, "invalid-account", 100.0)
++
++    # Non-retryable, so Temporal hands the failure straight to the workflow
++    # instead of burning through a retry policy on input that cannot succeed.
++    assert caught.value.non_retryable
++    assert caught.value.type == "InvalidAccount"
++
++
++@pytest.mark.asyncio
++async def test_deposit_succeeds_for_a_valid_account():
++    result = await ActivityEnvironment().run(deposit, "account-456", 100.0)
++
++    assert result == "Deposited $100.0 to account-456"
++
++
++@pytest.mark.asyncio
++async def test_deposit_rejects_an_invalid_account_without_retrying():
++    with pytest.raises(ApplicationError) as caught:
++        await ActivityEnvironment().run(deposit, "invalid-account", 100.0)
++
++    assert caught.value.non_retryable
++    assert caught.value.type == "InvalidAccount"
++
++
++@pytest.mark.asyncio
++async def test_refund_accepts_any_account():
++    """The compensating activity has no validation, so it cannot strand funds."""
++    result = await ActivityEnvironment().run(refund, "invalid-account", 100.0)
++
++    assert result == "Refunded $100.0 to invalid-account"
+diff --git a/solution7/test_money_transfer_workflow.py b/solution7/test_money_transfer_workflow.py
+new file mode 100644
+index 0000000..a5f2d96
+--- /dev/null
++++ b/solution7/test_money_transfer_workflow.py
+@@ -0,0 +1,213 @@
++import asyncio
++import time
++import uuid
++
++import pytest
++from temporalio import activity
++from temporalio.worker import Worker
++
++import banking_activities
++from money_transfer_workflow import MoneyTransferWorkflow
++from retry_update import RetryUpdate
++from transfer_request import TransferRequest
++
++VALID_FROM = "account-123"
++VALID_TO = "account-456"
++INVALID = "invalid-account"
++
++# The real activities are deterministic, so the tests use them as-is and only
++# wrap them to record what the workflow asked for on each attempt.
++calls: list[tuple[str, str, float]] = []
++
++
++@activity.defn(name="withdraw")
++async def withdraw(account: str, amount: float) -> str:
++    calls.append(("withdraw", account, amount))
++    return await banking_activities.withdraw(account, amount)
++
++
++@activity.defn(name="deposit")
++async def deposit(account: str, amount: float) -> str:
++    calls.append(("deposit", account, amount))
++    return await banking_activities.deposit(account, amount)
++
++
++@activity.defn(name="refund")
++async def refund(account: str, amount: float) -> str:
++    calls.append(("refund", account, amount))
++    return await banking_activities.refund(account, amount)
++
++
++RECORDING_ACTIVITIES = [withdraw, deposit, refund]
++
++
++@pytest.fixture(autouse=True)
++def clear_calls():
++    calls.clear()
++
++
++def transfer_request(from_account: str = VALID_FROM, to_account: str = VALID_TO):
++    return TransferRequest(
++        from_account=from_account,
++        to_account=to_account,
++        amount=100.0,
++        reference_id=str(uuid.uuid4()),
++    )
++
++
++async def wait_until(predicate, description: str, timeout: float = 10.0) -> None:
++    """Poll until `predicate` holds, so tests never depend on sleep lengths."""
++    deadline = time.monotonic() + timeout
++    while not predicate():
++        assert time.monotonic() < deadline, f"timed out waiting for {description}"
++        await asyncio.sleep(0.05)
++
++
++async def wait_for_status(handle, status: str, timeout: float = 10.0) -> None:
++    """Poll the status query until the workflow reports the expected status."""
++    deadline = time.monotonic() + timeout
++    while await handle.query(MoneyTransferWorkflow.get_status) != status:
++        assert time.monotonic() < deadline, f"timed out waiting for {status}"
++        await asyncio.sleep(0.05)
++
++
++@pytest.mark.asyncio(loop_scope="session")
++async def test_valid_transfer_completes_after_approval(env):
++    task_queue = str(uuid.uuid4())
++
++    async with Worker(
++        env.client,
++        task_queue=task_queue,
++        workflows=[MoneyTransferWorkflow],
++        activities=RECORDING_ACTIVITIES,
++    ):
++        handle = await env.client.start_workflow(
++            MoneyTransferWorkflow.transfer,
++            transfer_request(),
++            id=str(uuid.uuid4()),
++            task_queue=task_queue,
++        )
++
++        await wait_for_status(handle, "IN_PROGRESS")
++        assert await handle.query(MoneyTransferWorkflow.is_approved) is False
++
++        await handle.signal(MoneyTransferWorkflow.approve, True)
++
++        assert await handle.result() == "Transfer completed successfully"
++        assert await handle.query(MoneyTransferWorkflow.get_status) == "COMPLETED"
++        assert await handle.query(MoneyTransferWorkflow.is_approved) is True
++        assert calls == [
++            ("withdraw", VALID_FROM, 100.0),
++            ("deposit", VALID_TO, 100.0),
++        ]
++
++
++@pytest.mark.asyncio(loop_scope="session")
++async def test_bad_source_account_parks_the_workflow_until_it_is_corrected(env):
++    """A non-retryable failure leaves the workflow waiting, not failed."""
++    task_queue = str(uuid.uuid4())
++
++    async with Worker(
++        env.client,
++        task_queue=task_queue,
++        workflows=[MoneyTransferWorkflow],
++        activities=RECORDING_ACTIVITIES,
++    ):
++        handle = await env.client.start_workflow(
++            MoneyTransferWorkflow.transfer,
++            transfer_request(from_account=INVALID),
++            id=str(uuid.uuid4()),
++            task_queue=task_queue,
++        )
++
++        await wait_for_status(handle, "RETRYING")
++        assert calls == [("withdraw", INVALID, 100.0)]
++
++        await handle.signal(
++            MoneyTransferWorkflow.retry, RetryUpdate(key="fromAccount", value=VALID_FROM)
++        )
++        await handle.signal(MoneyTransferWorkflow.approve, True)
++
++        assert await handle.result() == "Transfer completed successfully"
++        assert calls == [
++            ("withdraw", INVALID, 100.0),
++            ("withdraw", VALID_FROM, 100.0),
++            ("deposit", VALID_TO, 100.0),
++        ]
++
++
++@pytest.mark.asyncio(loop_scope="session")
++async def test_bad_target_account_is_corrected_after_approval(env):
++    """The deposit is behind the approval gate, so its retry happens later."""
++    task_queue = str(uuid.uuid4())
++
++    async with Worker(
++        env.client,
++        task_queue=task_queue,
++        workflows=[MoneyTransferWorkflow],
++        activities=RECORDING_ACTIVITIES,
++    ):
++        handle = await env.client.start_workflow(
++            MoneyTransferWorkflow.transfer,
++            transfer_request(to_account=INVALID),
++            id=str(uuid.uuid4()),
++            task_queue=task_queue,
++        )
++
++        await handle.signal(MoneyTransferWorkflow.approve, True)
++        await wait_for_status(handle, "RETRYING")
++        assert calls == [
++            ("withdraw", VALID_FROM, 100.0),
++            ("deposit", INVALID, 100.0),
++        ]
++
++        await handle.signal(
++            MoneyTransferWorkflow.retry, RetryUpdate(key="toAccount", value=VALID_TO)
++        )
++
++        assert await handle.result() == "Transfer completed successfully"
++        assert calls[-1] == ("deposit", VALID_TO, 100.0)
++
++
++@pytest.mark.asyncio(loop_scope="session")
++async def test_retry_signal_can_correct_the_amount_and_repeat(env):
++    """An unhelpful correction just retries; the workflow keeps waiting."""
++    task_queue = str(uuid.uuid4())
++
++    async with Worker(
++        env.client,
++        task_queue=task_queue,
++        workflows=[MoneyTransferWorkflow],
++        activities=RECORDING_ACTIVITIES,
++    ):
++        handle = await env.client.start_workflow(
++            MoneyTransferWorkflow.transfer,
++            transfer_request(from_account=INVALID),
++            id=str(uuid.uuid4()),
++            task_queue=task_queue,
++        )
++
++        await wait_for_status(handle, "RETRYING")
++
++        # Fixing the amount does not fix the account, so withdraw fails again.
++        # The status is already RETRYING, so wait on the second attempt itself.
++        await handle.signal(
++            MoneyTransferWorkflow.retry, RetryUpdate(key="amount", value="250")
++        )
++        await wait_until(lambda: len(calls) == 2, "the second withdrawal attempt")
++        await wait_for_status(handle, "RETRYING")
++        assert calls == [
++            ("withdraw", INVALID, 100.0),
++            ("withdraw", INVALID, 250.0),
++        ]
++
++        await handle.signal(
++            MoneyTransferWorkflow.retry, RetryUpdate(key="fromAccount", value=VALID_FROM)
++        )
++        await handle.signal(MoneyTransferWorkflow.approve, True)
++
++        assert await handle.result() == "Transfer completed successfully"
++        assert calls[-2:] == [
++            ("withdraw", VALID_FROM, 250.0),
++            ("deposit", VALID_TO, 250.0),
++        ]
+diff --git a/solution8/conftest.py b/solution8/conftest.py
+new file mode 100644
+index 0000000..224ebd6
+--- /dev/null
++++ b/solution8/conftest.py
+@@ -0,0 +1,12 @@
++"""Shared pytest setup for the solution8 tests.
++
++The exercise modules import each other by flat module name (for example
++``from banking_activities import withdraw``) so that ``start_worker.py`` can
++run as a plain script. Putting this directory on ``sys.path`` lets the tests
++import them the same way regardless of where pytest is invoked from.
++"""
++
++import sys
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).parent))

@@ -105,6 +105,49 @@ uv run exercise6/run_tests.py
 
 Complete solutions are available in the `solution{N}/` directories for reference.
 
+### Running the Solution Tests
+
+Every solution directory carries unit tests for the concept its exercise
+teaches. Run them all:
+
+```bash
+uv run python run_tests.py
+```
+
+Or run one directory at a time:
+
+```bash
+cd solution3
+uv run pytest -v
+```
+
+Each directory needs its own pytest process, and `run_tests.py` gives it one.
+The exercises import their modules by flat name (`from banking_activities
+import withdraw`) so that `start_worker.py` runs as a plain script, which means
+`money_transfer_workflow` resolves to a different file in each directory. A
+single pytest process over the whole repo would import whichever directory it
+reached first and hand those modules to the rest.
+
+The tests need no running server: `WorkflowEnvironment.start_local()` starts a
+throwaway one, shared per directory by the `env` fixture in `conftest.py`.
+Where an exercise's activities fail at random, the workflow tests register
+stubs under the same activity names so the workflow code under test is
+unchanged but the outcome is not a coin flip.
+
+| Directory | What its tests cover |
+|---|---|
+| `solution1` | Activity in isolation with `ActivityEnvironment`; workflow delegating to it |
+| `solution2` | Simulated activity failures; approve and reject paths; buffered signals |
+| `solution3` | Query handlers at each stage, including mid-deposit and after close |
+| `solution4` | `AccountId` search attribute set on a running workflow, and filtering by it |
+| `solution5` | Activity summaries read back out of event history |
+| `solution6` | Activities and workflow, as written for the testing exercise |
+| `solution7` | Non-retryable `ApplicationError`, and correcting input with retry signals |
+| `solution8` | Patched workflow, plus replay of pre-versioning history |
+
+Solutions 3, 4, and 5 reuse `solution2`'s activities unchanged, so their tests
+cover only the workflow behaviour each one adds.
+
 ### Solution 6: Unit Testing
 Comprehensive unit tests for Temporal workflows and activities:
 - Activity testing with mocked failures
@@ -134,7 +177,8 @@ Safe workflow evolution using the Patched API:
 
 **Running Tests:**
 ```bash
-uv run pytest solution8/test_money_transfer_workflow.py -v
+cd solution8
+uv run pytest -v
 ```
 
 ## Key Concepts Covered
@@ -161,30 +205,27 @@ directory, and the finished solution one tab away.
 
 ```
 instruqt/
-├── README.md     Full track documentation
-├── track/        The track definition (track.yml, config.yml, 8 challenges)
-└── sandbox/      Sandbox provisioning + the network control panel it stages
-                  (has its own README on shipping sandbox changes)
+├── README.md     How to push the track and the sandbox
+├── track/        The track definition: track.yml + 8 challenge directories
+└── sandbox/      An Instruqt sandbox preset, pushed separately from the track
+                  (has its own README on provisioning and the proxy panel)
 ```
 
-There is no sandbox image to build. The track runs on stock `python:3.11`:
-`instruqt/track/track_scripts/setup-workshop` clones this repo and hands off to
-`instruqt/sandbox/setup-workshop`, which installs the toolchain and starts the
-Temporal dev server. Instruqt's Hot Start pre-provisions that work ahead of the
-session, so attendees do not wait on it.
+There is no image to build. The preset's `scripts/setup-workshop` installs the
+toolchain on stock `ubuntu:24.04`, clones this repo, and starts the Temporal dev
+server. Hot Start pre-provisions all of that ahead of the session, so attendees
+do not wait on it.
 
-Publish the track with the Instruqt CLI from `instruqt/track/`:
+The track and the sandbox are separate artifacts with separate commands, and
+this repo's exercise code is part of neither push — it arrives through the git
+clone that provisioning performs:
 
 ```bash
-cd instruqt/track
-instruqt track validate    # local validation, no push
-instruqt track push        # publish
-instruqt track test        # run every solve script end to end
+cd instruqt/track && instruqt track push      # assignments, track.yml
+cd instruqt/sandbox && instruqt sandbox push  # then: instruqt sandbox publish
+git push                                      # exercise code, proxy files
 ```
 
-See [instruqt/README.md](instruqt/README.md) for the layout, what
-`setup-workshop` provisions and what that costs, the network control panel, the
-tab inventory, how to boot and test a sandbox locally with Docker, and the
-pre-flight checklist before a live session. It also records a handful of
-exercise-code quirks the track works around, including the `PYTHONPATH` that
-`exercise7` and `exercise8` need.
+See [instruqt/README.md](instruqt/README.md) for which change needs which
+command, the gotchas on each, and the pre-flight checklist before a live
+session.
